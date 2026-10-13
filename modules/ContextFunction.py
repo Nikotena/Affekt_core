@@ -3,92 +3,81 @@ Context Function Module
 Scene orchestrator that determines triggers and assembles strict payloads for LLM
 """
 
-from typing import Dict, List, Optional, Callable
-import json
+from typing import Callable, Dict, List, Optional
+
+TRIGGER_KEYWORDS = ("sell", "give", "unlock", "buy", "trade")
+TRIGGER_NPC_IDS = ("bartender_01", "merchant_01")
+
+MAX_PAYLOAD_LINES = 50
+MAX_CONTEXT_VARIABLES = 10
+
 
 class ContextFunction:
     def __init__(self):
         self.world_state: Dict = {}
+        self.contexts: Dict[str, Dict] = {}
+        self.active_context_id: Optional[str] = None
         self.active_context: Optional[Dict] = None
-        self.context_switch_callbacks: List[Callable] = []
-        self.trigger_scripts: Dict[str, Callable] = {}
-    
+        self.trigger_scripts: Dict[str, Callable[[str, str], None]] = {}
+
     def set_world_state(self, world_state: Dict) -> None:
         """Set the current world state (chapter, location, etc.)"""
         self.world_state = world_state
-    
+
     def register_context(self, context_id: str, context_data: Dict) -> None:
-        """Register a context definition"""
         self.contexts[context_id] = context_data
-    
-    def register_trigger_script(self, trigger_name: str, callback: Callable) -> None:
-        """Register a script that executes when a trigger fires"""
-        self.trigger_scripts[trigger_name] = callback
-    
-    def should_trigger_script(self, event_description: str, 
-                             context_variables: List[str]) -> bool:
-        """
-        Determine if an event triggers a script in the game
-        """
-        # Simple rule-based triggering
-        if not context_variables:
-            return False
-        
-        # Check for specific keywords
-        trigger_keywords = ["sell", "give", "unlock", "buy", "trade"]
-        if any(keyword in event_description.lower() for keyword in trigger_keywords):
-            return True
-        
-        # Check for specific NPC IDs
-        if "bartender_01" in event_description or "merchant_01" in event_description:
-            return True
-        
-        return False
-    
-    def build_strict_payload(self, npc_id: str, 
-                            context_variables: List[str],
-                            world_state: Optional[Dict] = None) -> List[str]:
-        """
-        Build a strict payload (16-128 tokens) for the LLM
-        """
-        payload = []
-        
-        # Add world state info
-        if world_state:
-            payload.append(f"World: {world_state.get('location', 'unknown')}")
-        
-        # Add NPC info
-        payload.append(f"NPC: {npc_id}")
-        
-        # Add context variables (limited to 16-128 tokens)
-        if context_variables:
-            # Limit to reasonable length
-            max_vars = min(10, len(context_variables))
-            for i in range(max_vars):
-                payload.append(context_variables[i])
-        
-        # Limit to reasonable length
-        if len(payload) > 50:
-            payload = payload[:50]
-        
-        return payload
-    
-    def execute_context_function(self, npc_id: str, action: str) -> None:
-        """Execute context function (simulated)"""
-        print(f"Context function executed for NPC {npc_id} with action: {action}")
-        
-        # In a real implementation, this would interact with the game engine
-        # and possibly invoke scripts/events
-        if self.should_trigger_script(action, []):
-            print(f"Triggered script for action: {action}")
-    
+
     def switch_context(self, new_context_id: str) -> bool:
-        """Atomically swap the active context"""
-        if new_context_id in self.contexts:
-            self.active_context = self.contexts[new_context_id]
-            return True
-        return False
-    
+        """Swap the active context. Returns False if it is not registered."""
+        if new_context_id not in self.contexts:
+            return False
+        self.active_context_id = new_context_id
+        self.active_context = self.contexts[new_context_id]
+        return True
+
     def get_active_context(self) -> Optional[Dict]:
-        """Get the currently active context"""
         return self.active_context
+
+    def register_trigger_script(self, trigger_name: str, callback: Callable[[str, str], None]) -> None:
+        """Register a callback(npc_id, action) run when the keyword/NPC `trigger_name` fires."""
+        self.trigger_scripts[trigger_name] = callback
+
+    def matched_triggers(self, event_description: str) -> List[str]:
+        """Names of all triggers (keywords / NPC ids) present in the event."""
+        text = event_description.lower()
+        return [k for k in TRIGGER_KEYWORDS + TRIGGER_NPC_IDS if k in text]
+
+    def should_trigger_script(self, event_description: str,
+                              context_variables: Optional[List[str]] = None) -> bool:
+        """Rule-based trigger check (keywords or well-known NPC ids)."""
+        return bool(self.matched_triggers(event_description))
+
+    def execute_context_function(self, npc_id: str, action: str) -> List[str]:
+        """Run the registered scripts for every trigger the action fires; returns their names."""
+        fired = []
+        for name in self.matched_triggers(action):
+            callback = self.trigger_scripts.get(name)
+            if callback is not None:
+                callback(npc_id, action)
+                fired.append(name)
+        return fired
+
+    def build_strict_payload(self, npc_id: str, context_variables: List[str],
+                             world_state: Optional[Dict] = None,
+                             facts: Optional[List[str]] = None) -> List[str]:
+        """Assemble the compact, ordered line list sent to the LLM.
+
+        Order is priority order, so truncation drops the least important lines:
+        world, NPC, active scene, graph facts, then the most recent context variables.
+        """
+        world = self.world_state if world_state is None else world_state
+        payload: List[str] = []
+        if world:
+            payload.append(f"World: {world.get('location', 'unknown')}")
+        payload.append(f"NPC: {npc_id}")
+        if self.active_context:
+            payload.append(f"Scene: {self.active_context.get('description', self.active_context_id)}")
+        payload.extend(facts or [])
+        if context_variables:
+            payload.extend(context_variables[-MAX_CONTEXT_VARIABLES:])
+        return payload[:MAX_PAYLOAD_LINES]

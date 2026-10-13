@@ -4,15 +4,9 @@ Kankei Engine - Main Engine Controller
 Coordinates all modules and implements the 80/20 architecture
 """
 
-import sys
 import time
-import os
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-# Add parent directory to path for module imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Import modules
 from modules.VectorialPersonality import VectorialPersonality
 from modules.MemorySet import MemorySet
 from modules.ContextFunction import ContextFunction
@@ -24,7 +18,7 @@ class KankeiEngine:
                  neo4j_password: str = "password",
                  connect_neo4j: bool = False):
         # Core modules (80/20 architecture: 80% deterministic, 20% AI)
-        self.personality = VectorialPersonality("NPC_0")
+        self.personalities: Dict[str, VectorialPersonality] = {}
         self.memory = MemorySet()
         self.context = ContextFunction()
         # Passive persistence layer (in-memory primary graph + optional Neo4j)
@@ -37,14 +31,11 @@ class KankeiEngine:
         
         # Engine state
         self.running = False
-        self.last_update = 0
         self.update_interval = 0.1  # seconds
         self._event_counter = 0
+        self._memory_counter = 0
         
-        # Context registry
-        self.contexts = {}
-        
-        # Register initial contexts
+        # Register initial contexts (stored in the ContextFunction registry)
         self._register_initial_contexts()
         
         # Seed the world graph
@@ -53,26 +44,26 @@ class KankeiEngine:
     def _register_initial_contexts(self):
         """Register initial context definitions"""
         # Chapter-based contexts
-        self.contexts["chapter_start"] = {
+        self.context.contexts["chapter_start"] = {
             "description": "Initial chapter setup",
             "variables": ["chapter", "location", "goal"]
         }
         
-        self.contexts["shop_open"] = {
+        self.context.contexts["shop_open"] = {
             "description": "Shop opened",
             "variables": ["shop_items", "prices"]
         }
         
-        self.contexts["npc_interaction"] = {
+        self.context.contexts["npc_interaction"] = {
             "description": "Interacting with NPCs",
             "variables": ["npc_id", "intent"]
         }
     
     def initialize_modules(self):
         """Initialize all modules"""
-        # Ensure personality is properly configured
-        self.personality.set_temperament(0)  # Normal temperament
-        
+        self.personality_for("NPC_0").set_temperament(0)  # Normal temperament
+        self.context.switch_context("chapter_start")
+
         # Initial context setup
         self.context.set_world_state({
             "location": "Tavern",
@@ -82,6 +73,40 @@ class KankeiEngine:
         
         print("Kankei Engine initialized successfully")
     
+    @property
+    def personality(self) -> VectorialPersonality:
+        """Default NPC's personality (kept for backwards compatibility)."""
+        return self.personality_for("NPC_0")
+
+    def personality_for(self, npc_id: str) -> VectorialPersonality:
+        """Each NPC has its own emotional state, created on first use."""
+        if npc_id not in self.personalities:
+            self.personalities[npc_id] = VectorialPersonality(npc_id)
+        return self.personalities[npc_id]
+
+    def _graph_facts(self, npc_id: str, subgraph: Dict) -> List[str]:
+        """Turn the NPC's neighbourhood into short 'A REL B' lines for the LLM payload."""
+        names = {n["id"]: n["properties"].get("name", n["id"]) for n in subgraph["nodes"]}
+        return [
+            f"{names[e['source']]} {e['type']} {names[e['target']]}"
+            for e in subgraph["edges"]
+            if e["source"] == npc_id or e["target"] == npc_id
+        ]
+
+    def _consolidate(self) -> None:
+        """Run memory consolidation and mirror new long-term concepts into the graph."""
+        for concept in self.memory.consolidate_and_forget():
+            self._memory_counter += 1
+            node_id = f"memory_{concept['npc_id']}_{self._memory_counter}"
+            info = concept["data"]["key_info"]
+            self.graph.add_node(node_id, "LongTermMemory", concept=info.get("description", ""),
+                                strength=concept["data"]["original_importance"])
+            if self.graph.get_node(concept["npc_id"]) is not None:
+                self.graph.add_edge(concept["npc_id"], "REMEMBERED", node_id)
+            # The raw event is forgotten; only the consolidated memory stays in the graph.
+            if info.get("node_id"):
+                self.graph.remove_node(info["node_id"])
+
     def _seed_world_graph(self):
         """Populate the in-memory graph with the initial world topology."""
         # Player
@@ -129,73 +154,68 @@ class KankeiEngine:
         if not self.running:
             raise RuntimeError("Engine is not running")
         
-        # Step 1: Vectorial Personality calculation
+        # Step 1: Vectorial Personality calculation (per NPC)
+        personality = self.personality_for(npc_id)
         action_delta = self._generate_action_delta(action)
-        delta = self.personality.update_from_action(action_delta)
-        
-        # Step 2: Memory lookup + write orchestration
+        personality.update_from_action(action_delta)
+        npc_node = self.graph.get_node(npc_id)
+        if npc_node is not None:
+            npc_node.properties["current_mood"] = personality.mood()
+
+        # Step 2: Memory write orchestration
         self.memory.add_short_term_entry(npc_id, action)
-        importance = max(abs(d) for d in action_delta[:3])
+        importance = self.memory.importance_of(action_delta)
+        fast_track = action_delta[3] >= 0.8  # high temporal inertia is always remembered
         event_node_id = None
-        if importance >= self.memory.importance_threshold or action_delta[3] >= 0.8:
+        fact = self.memory.add_importance_entry(
+            npc_id, action_delta, {"description": action}, force=fast_track)
+        if fact is not None:
             self._event_counter += 1
             event_node_id = f"event_{npc_id}_{self._event_counter}"
+            fact["data"]["node_id"] = event_node_id
             self.graph.add_node(
                 event_node_id,
                 "MediumTermEvent",
                 description=action,
-                timestamp_created=time.time(),
+                timestamp_created=fact["timestamp"],
                 importance=importance,
             )
-            self.memory.add_importance_entry(npc_id, action_delta, {"description": action, "node_id": event_node_id})
             # Link NPC -> EXPERIENCED -> event, Player -> CAUSED -> event
-            if self.graph.get_node(npc_id) is not None:
+            if npc_node is not None:
                 self.graph.add_edge(npc_id, "EXPERIENCED", event_node_id)
             if self.graph.get_node("player_01") is not None:
                 self.graph.add_edge("player_01", "CAUSED", event_node_id)
-        
-        short_term = self.memory.get_short_term_context(npc_id)
-        medium_term = self.memory.get_medium_term_context(npc_id)
-        
-        # Convert short-term entries to strings for context function
-        short_term_strings = [f"{entry['npc_id']}: {entry['phrase']}" for entry in short_term]
-        
-        # Step 3: Context function evaluation
-        triggers_script = self.context.should_trigger_script(action, short_term_strings)
-        
-        if triggers_script:
-            self.context.execute_context_function(npc_id, action)
-        
-        # Extract a graph subgraph around the NPC to enrich the payload
-        subgraph = self.graph.subgraph_for(npc_id, depth=2)
-        
+
+        short_term_strings = [
+            f"{e['npc_id']}: {e['phrase']}" for e in self.memory.get_short_term_context(npc_id)
+        ]
+
+        # Step 3: Context function evaluation (runs registered trigger scripts)
+        triggered = self.context.execute_context_function(npc_id, action)
+
         # Step 4: Build strict payload for LLM
-        payload = self.context.build_strict_payload(
-            npc_id,
-            short_term_strings,
-            self.context.get_active_context()
-        )
-        
-        # Simulate LLM response
+        subgraph = self.graph.subgraph_for(npc_id, depth=2)
+        facts = [f"Mood: {personality.mood()}"] + self._graph_facts(npc_id, subgraph)
+        payload = self.context.build_strict_payload(npc_id, short_term_strings, facts=facts)
         response = self._generate_response(payload, npc_id, action)
-        
-        # Step 5: Consolidate and forget (background task)
-        self.memory.consolidate_and_forget()
-        
+
+        # Step 5: Consolidate and forget
+        self._consolidate()
+
         return {
             "npc_id": npc_id,
             "action": action,
             "response": response,
+            "mood": personality.mood(),
+            "triggered": triggered,
+            "payload": payload,
             "payload_size": len(payload),
             "graph_nodes": len(subgraph["nodes"]),
             "graph_edges": len(subgraph["edges"]),
             "memory_event": event_node_id,
-            "timestamps": [
-                self.last_update,
-                time.time()
-            ]
+            "timestamp": time.time(),
         }
-    
+
     def _generate_response(self, payload: List[str], npc_id: str, action: str) -> str:
         """Generate a simulated LLM response"""
         # In a real implementation, this would call the local micro-LLM
@@ -230,16 +250,13 @@ class KankeiEngine:
             
             result = self.process_action(npc_id, action)
             results.append(result)
-            
-            # Periodic consolidation
-            if i % 10 == 0:
-                self.memory.consolidate_and_forget()
         
         return results
 
     def shutdown(self):
         """Gracefully shut down: sync graph to Neo4j (if connected)."""
         self.running = False
+        self._consolidate()
         self.graph.close()
 
     def save_snapshot(self, path: str) -> None:

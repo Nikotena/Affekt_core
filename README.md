@@ -43,6 +43,12 @@ Esto ejecuta 6 pruebas independientes (cableado del motor, matemáticas de perso
 python test\basic_tests.py
 ```
 
+### Paso 2b: Ejecuta las pruebas unitarias (comportamiento)
+
+```powershell
+python -m unittest discover -s test -v
+```
+
 ### Paso 3: Ejecuta la demo del motor directamente
 
 ```powershell
@@ -96,8 +102,8 @@ y un bloque de métricas:
 ```
 === Engine Metrics ===
 Total actions: 20
-Average payload size: 3.5 tokens
-Max payload size: 5 tokens
+Average payload size: ~10 lines
+Max payload size: ~14 lines
 Memory events persisted: 16
 Graph nodes: 27
 Neo4j persistence active: False

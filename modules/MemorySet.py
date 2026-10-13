@@ -4,113 +4,94 @@ Implements the 3-layer memory hierarchy: Short-Term (RAM), Medium-Term, Long-Ter
 """
 
 import time
-from typing import Dict, List, Optional, Any
 from collections import deque
+from typing import Dict, List, Optional
+
 
 class MemorySet:
-    def __init__(self, short_term_capacity: int = 20, medium_term_retention: int = 300):  # 5 minutes in seconds
+    def __init__(self, short_term_capacity: int = 20, medium_term_retention: float = 300):
         self.short_term_buffer: deque = deque(maxlen=short_term_capacity)
         self.medium_term_memory: List[Dict] = []
         self.long_term_memory: List[Dict] = []
-        
-        # Constants
+
         self.medium_term_retention = medium_term_retention  # seconds (default 5 minutes)
-        self.importance_threshold = 0.15  # Δ ≥ 0.15 triggers medium-term fact creation
-        
-        # Memory structure:
-        # Each entry has: id, type, data, timestamp, importance
-        self.memory_counter = 0
-    
+        self.importance_threshold = 0.15  # delta >= 0.15 on any axis creates a medium-term fact
+        self._concept_counter = 0
+
+    @staticmethod
+    def importance_of(delta_vector: List[float]) -> float:
+        """Largest absolute change on the X/Y/Z axes."""
+        return max(abs(d) for d in delta_vector[:3])
+
     def add_short_term_entry(self, npc_id: str, phrase: str, metadata: Optional[Dict] = None) -> None:
         """Add a phrase to the short-term ring buffer"""
-        entry = {
-            "npc_id": npc_id,
-            "phrase": phrase,
-            "timestamp": time.time(),
-            "type": "short_term"
-        }
+        entry = {"npc_id": npc_id, "phrase": phrase, "timestamp": time.time(), "type": "short_term"}
         if metadata:
             entry.update(metadata)
         self.short_term_buffer.append(entry)
-    
-    def add_importance_entry(self, npc_id: str, delta_vector: List[float], 
-                            event_data: Dict) -> Optional[Dict]:
-        """
-        Evaluate if interaction exceeds importance threshold.
-        If Δ ≥ 0.15 on any axis, creates medium-term fact.
-        """
-        # Check if vector delta exceeds threshold
-        importance = max(abs(delta) for delta in delta_vector[:3])
-        
-        # If exceeds threshold, create medium-term fact
-        if importance >= self.importance_threshold:
-            fact_entry = {
-                "npc_id": npc_id,
-                "fact_type": "memory",
-                "data": event_data,
-                "timestamp": time.time(),
-                "importance": importance
-            }
-            self.medium_term_memory.append(fact_entry)
-            return fact_entry
-        
-        # Check temporal inertia - if W >= 0.8, fast-track to medium-term
-        # (This would be accessed from personality module)
-        return None
-    
-    def add_long_term_concept(self, npc_id: str, concept_id: str, 
-                              concept_data: Dict, consolidation_time: float) -> None:
-        """Add a long-term concept after consolidation"""
+
+    def add_importance_entry(self, npc_id: str, delta_vector: List[float],
+                             event_data: Dict, force: bool = False) -> Optional[Dict]:
+        """Create a medium-term fact if the interaction is important enough (or `force`d,
+        e.g. high temporal inertia fast-tracks the event)."""
+        importance = self.importance_of(delta_vector)
+        if not force and importance < self.importance_threshold:
+            return None
+        fact = {
+            "npc_id": npc_id,
+            "fact_type": "memory",
+            "data": event_data,
+            "timestamp": time.time(),
+            "importance": importance,
+        }
+        self.medium_term_memory.append(fact)
+        return fact
+
+    def add_long_term_concept(self, npc_id: str, concept_id: str, concept_data: Dict,
+                              consolidated_at: Optional[float] = None) -> Dict:
+        """Store a consolidated concept and return it."""
         entry = {
             "npc_id": npc_id,
             "concept_id": concept_id,
             "data": concept_data,
-            "consolidated_at": time.time() - consolidation_time,
-            "type": "long_term"
+            "consolidated_at": consolidated_at if consolidated_at is not None else time.time(),
+            "type": "long_term",
         }
         self.long_term_memory.append(entry)
-    
+        return entry
+
     def get_short_term_context(self, npc_id: str) -> List[Dict]:
-        """Retrieve short-term entries for a specific NPC"""
-        return [entry for entry in self.short_term_buffer 
-                if entry["npc_id"] == npc_id]
-    
+        return [e for e in self.short_term_buffer if e["npc_id"] == npc_id]
+
     def get_medium_term_context(self, npc_id: str) -> List[Dict]:
-        """Retrieve medium-term memories for a specific NPC"""
-        return [entry for entry in self.medium_term_memory 
-                if entry["npc_id"] == npc_id]
-    
+        return [e for e in self.medium_term_memory if e["npc_id"] == npc_id]
+
     def get_long_term_context(self, npc_id: str) -> List[Dict]:
-        """Retrieve long-term concepts for a specific NPC"""
-        return [entry for entry in self.long_term_memory 
-                if entry["npc_id"] == npc_id]
-    
-    def consolidate_and_forget(self) -> None:
-        """Background consolidation and forgetting algorithm"""
-        current_time = time.time()
-        
-        # Process medium-term memories
-        new_medium_term = []
+        return [e for e in self.long_term_memory if e["npc_id"] == npc_id]
+
+    def consolidate_and_forget(self, now: Optional[float] = None) -> List[Dict]:
+        """Promote expired medium-term facts to long-term concepts.
+
+        Returns the newly created long-term entries so callers can mirror them
+        (e.g. into the graph).
+        """
+        now = time.time() if now is None else now
+        kept, created = [], []
         for entry in self.medium_term_memory:
-            age_seconds = current_time - entry["timestamp"]
-            
-            if age_seconds < self.medium_term_retention:
-                # Still within retention window
-                new_medium_term.append(entry)
-            else:
-                # Age past retention - convert to long-term concept
-                # Extract key facts and create abstraction
-                concept_id = f"CONCEPT_{entry['npc_id']}_{entry.get('fact_type', 'unknown')}"
-                concept_data = {
+            if now - entry["timestamp"] < self.medium_term_retention:
+                kept.append(entry)
+                continue
+            self._concept_counter += 1
+            concept_id = f"CONCEPT_{entry['npc_id']}_{self._concept_counter}"
+            created.append(self.add_long_term_concept(
+                entry["npc_id"],
+                concept_id,
+                {
                     "key_info": entry["data"],
                     "original_importance": entry["importance"],
-                    "source_timestamp": entry["timestamp"]
-                }
-                self.add_long_term_concept(
-                    entry["npc_id"], 
-                    concept_id, 
-                    concept_data, 
-                    age_seconds
-                )
-        
-        self.medium_term_memory = new_medium_term
+                    "source_timestamp": entry["timestamp"],
+                },
+                consolidated_at=now,
+            ))
+        self.medium_term_memory = kept
+        return created

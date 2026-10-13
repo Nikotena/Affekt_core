@@ -9,6 +9,7 @@ Architecture:
   in-memory-only mode (all methods still work, nothing is persisted to disk).
 """
 
+import json
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
 
@@ -77,6 +78,8 @@ class GraphDatabase:
         self.nodes: Dict[str, _GraphNode] = {}
         # adjacency: node_id -> list of (rel_type, target_id, props)
         self.edges: Dict[str, List[tuple]] = defaultdict(list)
+        # reverse adjacency: node_id -> list of (rel_type, source_id), for undirected traversal
+        self._incoming: Dict[str, List[tuple]] = defaultdict(list)
 
         # Optional Neo4j connection
         self._driver = None
@@ -134,7 +137,23 @@ class GraphDatabase:
             raise ValueError(f"Unknown relationship type: {rel_type}")
         if source_id not in self.nodes or target_id not in self.nodes:
             raise KeyError("Both source and target nodes must exist before adding an edge")
+        # Idempotent: re-adding the same (source, type, target) updates its properties.
+        for rel, tgt, props in self.edges[source_id]:
+            if rel == rel_type and tgt == target_id:
+                props.update(properties)
+                return
         self.edges[source_id].append((rel_type, target_id, dict(properties)))
+        self._incoming[target_id].append((rel_type, source_id))
+
+    def remove_node(self, node_id: str) -> None:
+        """Delete a node and every edge touching it (used when memories are forgotten)."""
+        self.nodes.pop(node_id, None)
+        self.edges.pop(node_id, None)
+        self._incoming.pop(node_id, None)
+        for src in list(self.edges):
+            self.edges[src] = [e for e in self.edges[src] if e[1] != node_id]
+        for tgt in list(self._incoming):
+            self._incoming[tgt] = [e for e in self._incoming[tgt] if e[1] != node_id]
 
     def get_neighbors(self, node_id: str,
                       rel_type: Optional[str] = None) -> List[_GraphNode]:
@@ -148,39 +167,33 @@ class GraphDatabase:
 
     def subgraph_for(self, node_id: str, depth: int = 2) -> Dict[str, Any]:
         """
-        Extract a flat subgraph around a node (Nodes and Edges with properties).
-        Used by the Memory Set to assemble LLM context.
+        Extract a flat subgraph within `depth` hops of a node, following edges in
+        both directions. Only edges whose endpoints are both included are returned.
+        Used to assemble LLM context.
         """
-        visited = set()
-        frontier = [node_id]
-        collected_nodes = {}
-        collected_edges = []
+        if node_id not in self.nodes:
+            return {"nodes": [], "edges": []}
 
-        for _ in range(depth + 1):
+        visited = {node_id}
+        frontier = [node_id]
+        for _ in range(depth):
             next_frontier = []
             for current in frontier:
-                if current in visited:
-                    continue
-                visited.add(current)
-                node = self.nodes.get(current)
-                if node is None:
-                    continue
-                collected_nodes[current] = node
-                for rel, target_id, props in self.edges.get(current, []):
-                    collected_edges.append({
-                        "source": current,
-                        "type": rel,
-                        "target": target_id,
-                        "properties": props,
-                    })
-                    if target_id not in visited:
-                        next_frontier.append(target_id)
+                linked = [t for _r, t, _p in self.edges.get(current, [])]
+                linked += [s for _r, s in self._incoming.get(current, [])]
+                for other in linked:
+                    if other in self.nodes and other not in visited:
+                        visited.add(other)
+                        next_frontier.append(other)
             frontier = next_frontier
 
-        return {
-            "nodes": [n.to_dict() for n in collected_nodes.values()],
-            "edges": collected_edges,
-        }
+        edges = [
+            {"source": src, "type": rel, "target": tgt, "properties": props}
+            for src in visited
+            for rel, tgt, props in self.edges.get(src, [])
+            if tgt in visited
+        ]
+        return {"nodes": [self.nodes[n].to_dict() for n in visited], "edges": edges}
 
     # ------------------------------------------------------------------
     # Cypher-style persistence (save/load)
@@ -227,19 +240,37 @@ class GraphDatabase:
     # ------------------------------------------------------------------
     # Batch export for offline analysis
     # ------------------------------------------------------------------
+    @staticmethod
+    def _cypher_literal(value: Any) -> str:
+        """Cypher literal for a property value (JSON string escaping is valid Cypher)."""
+        if value is None:
+            return "null"
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return repr(value)
+        if isinstance(value, (list, tuple)):
+            return "[" + ", ".join(GraphDatabase._cypher_literal(v) for v in value) + "]"
+        return json.dumps(str(value), ensure_ascii=False)
+
+    @classmethod
+    def _cypher_map(cls, props: Dict[str, Any]) -> str:
+        return "{" + ", ".join(f"`{k}`: {cls._cypher_literal(v)}" for k, v in props.items()) + "}"
+
     def export_cypher_batch(self) -> List[str]:
         """Return a list of Cypher statements representing the whole graph."""
+        lit = self._cypher_literal
         statements = []
         for node in self.nodes.values():
-            props = ", ".join(f"`{k}`: {v!r}" for k, v in node.properties.items())
             statements.append(
-                f"MERGE (n:`{node.label}` {{id: {node.node_id!r}}}) SET n += {{{props}}}"
+                f"MERGE (n:`{node.label}` {{id: {lit(node.node_id)}}}) "
+                f"SET n += {self._cypher_map(node.properties)}"
             )
         for source_id, rels in self.edges.items():
-            for rel_type, target_id, _props in rels:
+            for rel_type, target_id, props in rels:
                 statements.append(
-                    f"MATCH (a {{id: {source_id!r}}}), (b {{id: {target_id!r}}}) "
-                    f"MERGE (a)-[:`{rel_type}`]->(b)"
+                    f"MATCH (a {{id: {lit(source_id)}}}), (b {{id: {lit(target_id)}}}) "
+                    f"MERGE (a)-[r:`{rel_type}`]->(b) SET r += {self._cypher_map(props)}"
                 )
         return statements
 
