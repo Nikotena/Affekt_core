@@ -20,7 +20,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from KankeiEngine import KankeiEngine
 from tone import matches_tone
-from modules.LLMLayer import DEFAULT_MODEL_PATH, FEW_SHOT, LlamaCppBackend, StubBackend
+from modules.LLMLayer import (DEFAULT_MODEL_PATH, FEW_SHOT, LlamaCppBackend, StubBackend,
+                              set_example_seed)
 
 # Vector (X valence, Y initiative, Z stress, W inertia) that produces each mood
 MOOD_VECTORS = {
@@ -55,6 +56,25 @@ def sentences(text):
     return [s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s]
 
 
+# Words too common to count as "copying" when they make up most of a 4-word run
+_STOPWORDS = set("""you i the a an to of and what do want i'll your my in is it for me on with
+that this are be if at as can will from have we they he she or but not so just here there""".split())
+
+
+def _shingles(text, n=4):
+    words = re.findall(r"[a-z']+", text.lower().replace("’", "'"))
+    runs = {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
+    return {r for r in runs if sum(w in _STOPWORDS for w in r) < 3}  # drop generic runs
+
+
+_EXAMPLE_SHINGLES = set().union(*(_shingles(reply) for _f, _a, reply in FEW_SHOT))
+
+
+def leaks_example(reply):
+    """True if the reply reuses a 4-word run from a few-shot example reply."""
+    return bool(_shingles(reply) & _EXAMPLE_SHINGLES)
+
+
 def run_checks(reply, mood, expected):
     low = reply.lower()
     checks = {
@@ -62,6 +82,7 @@ def run_checks(reply, mood, expected):
         "short": len(reply) <= 220 and len(sentences(reply)) <= 3,
         "no_meta": not any(w in low for w in META_WORDS),
         "no_copy": not any(r.lower() in low for _f, _a, r in FEW_SHOT),
+        "no_leak": not leaks_example(reply),
         "facts": any(e in reply for e in expected) if expected else True,
     }
     if mood in ("hostile", "friendly"):
@@ -77,12 +98,14 @@ def main():
     ap.add_argument("--temperature", type=float, default=0.4)
     ap.add_argument("--sweep", help="comma-separated temperatures to compare, e.g. 0.3,0.5,0.7")
     ap.add_argument("--repeats", type=int, default=1, help="runs per scenario (reduces sampling noise)")
+    ap.add_argument("--seed", type=int, default=None, help="seed for the few-shot rotation")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
     backend = StubBackend() if args.stub else LlamaCppBackend(args.model, temperature=args.temperature)
     engine = KankeiEngine(llm=backend)
     engine.initialize_modules()
+    set_example_seed(args.seed)
 
     temps = [float(t) for t in args.sweep.split(",")] if args.sweep else [args.temperature]
     for temp in temps:
@@ -92,13 +115,14 @@ def main():
 
 
 def evaluate(engine, backend, args, temp):
-    totals, latencies = {}, []
+    totals, latencies, by_scenario = {}, [], {}
     for npc_id, mood, action, expected in SCENARIOS * args.repeats:
         engine.personality_for(npc_id).vector = list(MOOD_VECTORS[mood])
         payload, _ = engine.build_payload(npc_id, action)
         t = time.time()
         reply = backend.generate(payload, action)
         latencies.append(time.time() - t)
+        by_scenario.setdefault((npc_id, mood, action), []).append(reply.strip().lower())
         checks = run_checks(reply, mood, expected)
         for name, ok in checks.items():
             passed, count = totals.get(name, (0, 0))
@@ -113,6 +137,9 @@ def evaluate(engine, backend, args, temp):
         print(f"{name:10s} {passed}/{count}  ({100 * passed / count:.0f}%)")
     overall = sum(p for p, _ in totals.values()), sum(c for _, c in totals.values())
     print(f"{'OVERALL':10s} {overall[0]}/{overall[1]}  ({100 * overall[0] / overall[1]:.0f}%)")
+    total = sum(len(v) for v in by_scenario.values())
+    unique = sum(len(set(v)) for v in by_scenario.values())
+    print(f"variety    {unique}/{total}  ({100 * unique / total:.0f}% distinct replies per scenario)")
     print(f"latency    avg {sum(latencies) / len(latencies):.2f}s  max {max(latencies):.2f}s\n")
 
 

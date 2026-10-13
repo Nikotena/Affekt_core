@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""
+Fine-tuning dataset pipeline (teacher: TBrilliance by default).
+
+    python training/generate_dataset.py generate --n 200 --out data/raw.jsonl
+    python training/generate_dataset.py filter --raw data/raw.jsonl --out-dir data
+    python training/generate_dataset.py review --out-dir data      # writes data/review.md
+
+`generate` is resumable (it skips scenario ids already in the output), so it can run in
+chunks on a cloud GPU. `filter` writes zero-shot chat samples in the same prompt format
+the engine uses at inference, split into train / eval_seen / eval_unseen.
+"""
+
+import argparse
+import json
+import os
+import random
+import sys
+import time
+from collections import Counter
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "test"))
+
+from modules.LLMLayer import build_messages, narrate_action, set_example_seed  # noqa: E402
+from training.filters import drop_near_duplicates, reject_reason  # noqa: E402
+from training.scenarios import Scenario, generate_scenarios, make_payload  # noqa: E402
+
+DEFAULT_TEACHER = os.path.join(ROOT, "model", "LFM2.5-2.6B-Q3.8-TBrilliance-NEO-MAX-IQ4_XS.gguf")
+BENCH_ROLES = {"NPC_0": "Bartender", "NPC_1": "Merchant", "NPC_2": "Guard", "NPC_3": "Healer",
+               "NPC_4": "Blacksmith"}
+KIND_BY_NARRATION = {
+    "The player attacks you.": "attack", "The player greets you.": "greet",
+    "The player offers to help you.": "help", "The player wants to buy something from you.": "buy",
+    "The player wants to trade with you.": "trade", "The player asks you a question.": "ask",
+}
+
+
+def bench_keys():
+    """Scenario keys of test/eval_llm.py: they must never appear in training data."""
+    from eval_llm import SCENARIOS
+    keys = set()
+    for npc_id, mood, action, _expected in SCENARIOS:
+        kind = KIND_BY_NARRATION.get(narrate_action(action), "other")
+        role = BENCH_ROLES[npc_id]
+        if kind == "buy":
+            keys.add((role, mood, kind, "Potion" if "potion" in action else "Sword"))
+        else:
+            keys.add((role, mood, kind))
+    return keys
+
+
+def read_jsonl(path):
+    if not os.path.isfile(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def write_jsonl(path, rows):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        for r in rows:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+
+def append_jsonl(path, row, retries=5):
+    """Append one row, opening and closing the file each time (long runs hit sporadic
+    Windows I/O errors on a long-lived handle; the row is retried instead of lost)."""
+    line = json.dumps(row, ensure_ascii=False) + "\n"
+    for attempt in range(retries):
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(line)
+            return
+        except OSError:
+            if attempt == retries - 1:
+                raise
+            time.sleep(1 + attempt)
+
+
+def cmd_generate(args):
+    from modules.LLMLayer import LlamaCppBackend
+    scenarios = generate_scenarios(args.n, seed=args.seed, exclude_keys=bench_keys())
+    done = {r["id"] for r in read_jsonl(args.out)}
+    todo = [s for s in scenarios if s.id not in done]
+    print(f"{len(scenarios)} scenarios, {len(done)} already generated, {len(todo)} to do")
+    if not todo:
+        return
+    teacher = LlamaCppBackend(args.model, temperature=args.temperature, n_ctx=1024)
+    teacher.shots = args.shots
+    set_example_seed(args.seed)
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    start = time.time()
+    for i, sc in enumerate(todo, 1):
+        payload = make_payload(sc)
+        reply = teacher.generate(payload, sc.action)
+        row = {**sc.to_dict(), "payload": payload, "reply": reply,
+               "teacher": os.path.basename(args.model)}
+        append_jsonl(args.out, row)
+        if i % 10 == 0 or i == len(todo):
+            rate = (time.time() - start) / i
+            print(f"  {i}/{len(todo)}  {rate:.1f}s each, ~{rate * (len(todo) - i) / 60:.0f} min left", flush=True)
+
+
+def to_sample(row):
+    """Zero-shot chat sample: the exact prompt the fine-tuned model sees at inference."""
+    messages = build_messages(row["payload"], row["action"], mood=row["mood"], no_think=True, shots=0)
+    messages.append({"role": "assistant", "content": row["reply"]})
+    return {"id": row["id"], "mood": row["mood"], "kind": row["kind"], "split": row["split"],
+            "messages": messages}
+
+
+def cmd_filter(args):
+    raw = read_jsonl(args.raw)
+    reasons, clean = Counter(), []
+    for row in raw:
+        why = reject_reason(row["reply"], row["mood"], row["expected"])
+        if why:
+            reasons[why] += 1
+            row["rejected"] = why
+        else:
+            clean.append(row)
+    kept = []
+    for split in ("train", "eval_seen", "eval_unseen"):
+        part = drop_near_duplicates([r for r in clean if r["split"] == split])
+        reasons["near_duplicate"] += len([r for r in clean if r["split"] == split]) - len(part)
+        kept += part
+        write_jsonl(os.path.join(args.out_dir, f"{split}.jsonl"), [to_sample(r) for r in part])
+    write_jsonl(os.path.join(args.out_dir, "rejected.jsonl"), [r for r in raw if r.get("rejected")])
+    write_jsonl(os.path.join(args.out_dir, "kept_rows.jsonl"), kept)
+
+    print(f"raw {len(raw)}  ->  kept {len(kept)} ({100 * len(kept) / max(len(raw), 1):.0f}%)")
+    print("rejected by reason:", dict(reasons.most_common()))
+    print("kept by split:", dict(Counter(r["split"] for r in kept)))
+    print("kept by mood: ", dict(Counter(r["mood"] for r in kept)))
+    print("kept by kind: ", dict(Counter(r["kind"] for r in kept)))
+
+
+def cmd_review(args):
+    rows = read_jsonl(os.path.join(args.out_dir, "kept_rows.jsonl"))
+    rejected = read_jsonl(os.path.join(args.out_dir, "rejected.jsonl"))
+    rng = random.Random(args.seed)
+    lines = ["# Manual review sample", "",
+             "Mark each line OK / BAD and note why. Target: >= 80 % OK before scaling up.", "",
+             "## Kept (what the model would learn from)", ""]
+    for r in rng.sample(rows, min(args.k, len(rows))):
+        lines.append(f"- [ ] **{r['role']} / {r['mood']} / {r['action']}**"
+                     + (f" ({r['item']} {r['price']})" if r["expected"] else "")
+                     + f"\n  > {r['reply']}")
+    lines += ["", "## Rejected (check the filter is not throwing away good lines)", ""]
+    for r in rng.sample(rejected, min(10, len(rejected))):
+        lines.append(f"- `{r['rejected']}` **{r['role']} / {r['mood']} / {r['action']}**\n  > {r['reply']}")
+    path = os.path.join(args.out_dir, "review.md")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    print("wrote", path)
+
+
+def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    g = sub.add_parser("generate")
+    g.add_argument("--n", type=int, default=200)
+    g.add_argument("--seed", type=int, default=0)
+    g.add_argument("--out", default="data/raw.jsonl")
+    g.add_argument("--model", default=DEFAULT_TEACHER)
+    g.add_argument("--temperature", type=float, default=0.7)
+    g.add_argument("--shots", type=int, default=3)
+    g.set_defaults(fn=cmd_generate)
+
+    f = sub.add_parser("filter")
+    f.add_argument("--raw", default="data/raw.jsonl")
+    f.add_argument("--out-dir", default="data")
+    f.set_defaults(fn=cmd_filter)
+
+    r = sub.add_parser("review")
+    r.add_argument("--out-dir", default="data")
+    r.add_argument("--k", type=int, default=30)
+    r.add_argument("--seed", type=int, default=1)
+    r.set_defaults(fn=cmd_review)
+
+    args = ap.parse_args()
+    args.fn(args)
+
+
+if __name__ == "__main__":
+    main()

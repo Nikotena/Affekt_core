@@ -1,0 +1,138 @@
+"""Tests for the fine-tuning dataset pipeline (no model needed)."""
+import argparse
+import json
+import os
+import sys
+import tempfile
+import unittest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "test"))
+
+from KankeiEngine import KankeiEngine
+from modules.LLMLayer import build_messages
+from training.filters import drop_near_duplicates, reject_reason
+from training.generate_dataset import bench_keys, cmd_filter, cmd_review, read_jsonl, to_sample
+from training.scenarios import (HELD_OUT_ITEMS, HELD_OUT_ROLES, Scenario, generate_scenarios,
+                                make_payload)
+
+
+def engine_messages(npc_id, mood_vector, action):
+    e = KankeiEngine()
+    e.initialize_modules()
+    e.personality_for(npc_id).vector = list(mood_vector)
+    payload, _ = e.build_payload(npc_id, action)
+    return build_messages(payload, action, shots=0)
+
+
+class ParityTests(unittest.TestCase):
+    def test_commerce_prompt_matches_the_engine(self):
+        sc = Scenario(id="x", name="Marta", role="Merchant", place="Market", mood="neutral",
+                      initiative=0.0, action="buy a potion from me", kind="buy", item="Potion", price=25)
+        mine = build_messages(make_payload(sc), sc.action, shots=0)
+        self.assertEqual(mine, engine_messages("NPC_1", [0, 0, 0, 0.5], sc.action))
+
+    def test_known_player_prompt_matches_the_engine(self):
+        sc = Scenario(id="x", name="Alan", role="Bartender", place="Tavern", mood="friendly",
+                      initiative=0.0, action="greet the NPC", kind="greet",
+                      knows_player=True, knows_since="Act I")
+        mine = build_messages(make_payload(sc), sc.action, shots=0)
+        self.assertEqual(mine, engine_messages("NPC_0", [0.6, 0, 0.1, 0.5], sc.action))
+
+    def test_zero_shot_has_no_examples(self):
+        msgs = build_messages(["Style: x."], "greet the NPC", shots=0)
+        self.assertEqual([m["role"] for m in msgs], ["system", "user"])
+        self.assertEqual(len(build_messages(["Style: x."], "greet the NPC", shots=3)), 8)
+
+
+class ScenarioTests(unittest.TestCase):
+    def test_bench_scenarios_are_excluded(self):
+        keys = bench_keys()
+        self.assertTrue(keys)
+        for sc in generate_scenarios(1500, seed=3, exclude_keys=keys):
+            k = (sc.role, sc.mood, sc.kind, sc.item)
+            self.assertNotIn(k, keys)
+            self.assertNotIn(k[:3], keys)
+
+    def test_held_out_roles_and_items_never_reach_train(self):
+        scs = generate_scenarios(1500, seed=4)
+        for sc in scs:
+            if sc.role in HELD_OUT_ROLES or sc.item in HELD_OUT_ITEMS:
+                self.assertEqual(sc.split, "eval_unseen")
+            else:
+                self.assertIn(sc.split, ("train", "eval_seen"))
+        self.assertTrue(any(s.split == "eval_unseen" for s in scs))
+        self.assertTrue(any(s.split == "train" for s in scs))
+
+    def test_reproducible_and_unique(self):
+        a = [s.to_dict() for s in generate_scenarios(200, seed=9)]
+        b = [s.to_dict() for s in generate_scenarios(200, seed=9)]
+        self.assertEqual(a, b)
+        self.assertEqual(len({s["id"] for s in a}), 200)
+
+    def test_buy_scenarios_expect_the_price(self):
+        buys = [s for s in generate_scenarios(500, seed=5) if s.kind == "buy"]
+        self.assertTrue(buys)
+        for s in buys:
+            self.assertEqual(s.expected, [str(s.price)])
+            self.assertTrue(any(f"for {s.price} coins" in line for line in make_payload(s)))
+
+
+class FilterTests(unittest.TestCase):
+    def test_rejections(self):
+        cases = {
+            "*He grabs a tankard and hurls it.*": "stage_direction",
+            "Get out (angrily) of my shop, fool.": "stage_direction",
+            "She says nothing and leaves the room, fool.": "third_person",
+            "Alan: Get out of my tavern, you fool.": "name_prefix",
+            "Out.": "too_short_words",
+            "The player is a fool, so get out.": "no_meta",
+        }
+        for reply, why in cases.items():
+            self.assertEqual(reject_reason(reply, "hostile", []), why, reply)
+
+    def test_accepts_a_clean_line(self):
+        self.assertIsNone(reject_reason("You dare insult me? Get out before I lose my temper.", "hostile", []))
+
+    def test_missing_price_is_rejected(self):
+        self.assertEqual(reject_reason("Take it and go away.", "neutral", ["25"]), "facts")
+        self.assertEqual(reject_reason("The ring is a fine buy, truly worth it.", "neutral", ["25"]), "facts")
+
+    def test_near_duplicates(self):
+        rows = [{"reply": "Welcome, friend! Come in and sit by the fire."},
+                {"reply": "Welcome, friend! Come in and sit by the fire now."},
+                {"reply": "Move along before I lose my patience."}]
+        self.assertEqual(len(drop_near_duplicates(rows)), 2)
+
+
+class PipelineTests(unittest.TestCase):
+    def test_filter_and_review_end_to_end(self):
+        scs = generate_scenarios(60, seed=2, exclude_keys=bench_keys())
+        with tempfile.TemporaryDirectory() as d:
+            raw = os.path.join(d, "raw.jsonl")
+            with open(raw, "w", encoding="utf-8") as f:
+                for i, sc in enumerate(scs):
+                    lead = {"hostile": "Get out, fool", "friendly": "Welcome, friend"}.get(sc.mood, "Listen")
+                    reply = f"{lead}, the {sc.item.lower()} costs {sc.price} coins." if i % 3 else "*grumbles* Get out of my shop."
+                    f.write(json.dumps({**sc.to_dict(), "payload": make_payload(sc), "reply": reply}) + "\n")
+            cmd_filter(argparse.Namespace(raw=raw, out_dir=d))
+            cmd_review(argparse.Namespace(out_dir=d, k=5, seed=1))
+            for split in ("train", "eval_seen", "eval_unseen"):
+                for row in read_jsonl(os.path.join(d, f"{split}.jsonl")):
+                    self.assertEqual([m["role"] for m in row["messages"]], ["system", "user", "assistant"])
+                    self.assertIn("/no_think", row["messages"][1]["content"])
+            self.assertTrue(sum(len(read_jsonl(os.path.join(d, f"{x}.jsonl")))
+                                for x in ("train", "eval_seen", "eval_unseen")) > 0)
+            rejected = read_jsonl(os.path.join(d, "rejected.jsonl"))
+            self.assertTrue(all(r["rejected"] for r in rejected))
+            self.assertTrue(os.path.isfile(os.path.join(d, "review.md")))
+
+    def test_sample_is_zero_shot(self):
+        sc = generate_scenarios(1, seed=1)[0]
+        s = to_sample({**sc.to_dict(), "payload": make_payload(sc), "reply": "Fine, take it."})
+        self.assertEqual(len(s["messages"]), 3)
+
+
+if __name__ == "__main__":
+    unittest.main()

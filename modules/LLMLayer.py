@@ -7,6 +7,7 @@ Target model: Qwen3-0.6B (GGUF, Q8_0) running locally through llama-cpp-python.
 """
 
 import os
+import random
 import re
 from typing import Dict, List, Optional
 
@@ -48,35 +49,83 @@ MOOD_STYLE = {
     "neutral": "neutral and businesslike",
 }
 
-# Few-shot examples: (mood, facts, player action, NPC line). Short, first person, in character.
+# Few-shot pool: (mood, facts, player action, NPC line). Each call shows a few examples of
+# the current mood, one of them for the same kind of action. Rules for writing them:
+#  - invent a different item and price in every example (never the game's real ones), so
+#    prices and objects cannot be copied into a reply;
+#  - vary openers and closers, models reuse what they see;
+#  - keep neutral lines specific and two sentences long, short ones get copied verbatim.
 _EXAMPLES = (
     ("friendly", ["You are Alan, the Bartender.", "You know the player."],
      "The player greets you.", "Look who's back! Sit down, I'll pour you something."),
-    ("friendly", ["You are Dara, the Fisherman.", "You sell a Fish for 3 coins."],
-     "The player wants to buy something from you.", "Of course, friend! That is 3 coins, and I'll pick the best one."),
+    ("friendly", ["You are Dara, the Fisherman.", "You sell a Lantern for 14 coins."],
+     "The player wants to buy something from you.", "Of course, friend! The lantern is 14 coins, and it burns all night."),
+    ("friendly", ["You are Mira, the Healer."],
+     "The player offers to help you.", "Bless you, traveler. A steady pair of hands is just what I need today."),
+    ("friendly", ["You are Tomas, the Clerk."],
+     "The player asks you a question.", "Happy to answer! The old road is safest at dawn."),
+    ("friendly", ["You are Bran, the Guard.", "You know the player."],
+     "The player greets you.", "Evening, citizen! Quiet night so far, thanks to folks like you."),
+    ("friendly", ["You are Hilda, the Baker."],
+     "The player attacks you.", "Oh my, please stop! Whatever this is, we can sort it out over bread."),
     ("hostile", ["You are Kael, the Blacksmith."],
-     "The player attacks you.", "You dare raise a hand in my forge? Out, before I lose my temper!"),
+     "The player attacks you.", "Bold of you, swinging at me. I have buried bigger fools than you."),
     ("hostile", ["You are Bran, the Guard."],
-     "The player greets you.", "Don't smile at me, stranger. Move along before I lose patience."),
-    ("hostile", ["You are Dara, the Fisherman.", "You sell a Fish for 3 coins."],
-     "The player wants to buy something from you.", "It costs 3 coins. Pay up and get out of my sight."),
+     "The player greets you.", "Keep walking. I dislike your face, and your chatter even more."),
+    ("hostile", ["You are Orin, the Rope Seller.", "You sell a Rope for 6 coins."],
+     "The player wants to buy something from you.", "6 coins, no haggling. Grab your rope and vanish."),
+    ("hostile", ["You are Mira, the Healer."],
+     "The player offers to help you.", "Help me? After the way you strut around here? Find another healer."),
+    ("hostile", ["You are Tomas, the Clerk."],
+     "The player asks you a question.", "Questions? I have no answers for the likes of you."),
     ("tense", ["You are Mira, the Healer."],
      "The player asks you a question.", "Quiet... I heard something outside. What do you want to know?"),
-    ("neutral", ["You are Dara, the Fisherman.", "You sell a Fish for 3 coins."],
-     "The player wants to buy something from you.", "A fish is 3 coins."),
+    ("tense", ["You are Bran, the Guard."],
+     "The player greets you.", "Stay close, did you hear that? Something is moving out there."),
+    ("tense", ["You are Yuri, the Hunter.", "You sell an Arrow for 2 coins."],
+     "The player wants to buy something from you.", "Arrows? Take them, 2 coins each. Quickly, before it comes back."),
+    ("tense", ["You are Hilda, the Baker."],
+     "The player attacks you.", "No, no, back away! I will call the guards, I swear it."),
+    ("neutral", ["You are Pell, the Beekeeper.", "You sell a Honey jar for 9 coins."],
+     "The player wants to buy something from you.", "The honey jar is 9 coins. This year's batch came from the clover fields."),
     ("neutral", ["You are Tomas, the Clerk."],
-     "The player asks you a question.", "Ask away. I have a few minutes."),
+     "The player asks you a question.", "Ask away. I have a few minutes before the ledger needs closing."),
+    ("neutral", ["You are Alan, the Bartender."],
+     "The player greets you.", "Evening. We have stew tonight, or ale if you prefer."),
+    ("neutral", ["You are Kael, the Blacksmith."],
+     "The player offers to help you.", "I can mend that. It will take an hour, and the price is fair."),
+    ("neutral", ["You are Bran, the Guard."],
+     "The player attacks you.", "That was a mistake. Lower your weapon and we will talk."),
 )
+
+_rng = random.Random()
+
+
+def set_example_seed(seed: Optional[int]) -> None:
+    """Make the few-shot rotation reproducible (used by the eval); None re-randomizes."""
+    global _rng
+    _rng = random.Random(seed)
+
 
 def style_line(mood: str) -> str:
     return f"Style: {MOOD_STYLE[mood]}."
 
 
-def select_few_shot(mood: str, limit: int = 2):
-    """Examples for the current mood (they teach the tone), as (facts, action, reply)."""
-    same = [e for e in _EXAMPLES if e[0] == mood][:limit]
-    chosen = same or [e for e in _EXAMPLES if e[0] == "neutral"][:limit]
-    return [(facts + [style_line(m)], action, reply) for m, facts, action, reply in chosen]
+def select_few_shot(mood: str, limit: int = 3, action: Optional[str] = None):
+    """Few-shot examples for the current mood as (facts, action, reply).
+
+    One example matches `action` (the narrated player action) when the pool has one, so the
+    model sees the right format; the rest are random, so no single phrase dominates.
+    """
+    same = [e for e in _EXAMPLES if e[0] == mood] or [e for e in _EXAMPLES if e[0] == "neutral"]
+    chosen = []
+    matching = [e for e in same if action and e[2] == action]
+    if matching:
+        chosen.append(_rng.choice(matching))
+    others = [e for e in same if e not in chosen]
+    chosen += _rng.sample(others, min(limit - len(chosen), len(others)))
+    _rng.shuffle(chosen)
+    return [(facts + [style_line(m)], act, reply) for m, facts, act, reply in chosen]
 
 
 # Every example reply, used by the eval to detect verbatim copying
@@ -120,11 +169,14 @@ def mood_from_payload(payload: List[str]) -> str:
 
 
 def build_messages(payload: List[str], action: str, mood: Optional[str] = None,
-                   no_think: bool = True) -> List[Dict[str, str]]:
+                   no_think: bool = True, shots: int = 3) -> List[Dict[str, str]]:
     """Chat messages: system prompt, few-shot turns, then the real situation.
-    `/no_think` disables Qwen3's reasoning mode."""
+    `/no_think` disables Qwen3's reasoning mode. `shots=0` gives the zero-shot prompt that a
+    fine-tuned model is trained and served with."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for facts, shot_action, reply in select_few_shot(mood or mood_from_payload(payload)):
+    examples = select_few_shot(mood or mood_from_payload(payload), limit=shots,
+                               action=narrate_action(action)) if shots > 0 else []
+    for facts, shot_action, reply in examples:
         messages.append({"role": "user", "content": _user_turn(facts, shot_action, no_think)})
         messages.append({"role": "assistant", "content": reply})
     messages.append({"role": "user", "content": _user_turn(payload, narrate_action(action), no_think)})
@@ -166,6 +218,7 @@ class LlamaCppBackend(LLMBackend):
                           n_gpu_layers=n_gpu_layers, verbose=False)
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.shots = 3  # few-shot examples per call; a fine-tuned model uses 0
         meta = self._llm.metadata
         self.name = meta.get("general.name", os.path.basename(model_path))
         self._is_qwen = meta.get("general.architecture", "").lower() == "qwen3"
@@ -181,7 +234,7 @@ class LlamaCppBackend(LLMBackend):
                 bos_token=tok(self._llm.token_bos()), add_generation_prompt=True)
 
     def generate(self, payload: List[str], action: str) -> str:
-        messages = build_messages(payload, action, no_think=self._is_qwen)
+        messages = build_messages(payload, action, no_think=self._is_qwen, shots=self.shots)
         sampling = dict(max_tokens=self.max_tokens, temperature=self.temperature, top_p=0.8, top_k=20)
         if self._formatter is None:
             out = self._llm.create_chat_completion(messages=messages, **sampling)
