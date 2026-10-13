@@ -19,6 +19,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from KankeiEngine import KankeiEngine
+from tone import matches_tone
 from modules.LLMLayer import DEFAULT_MODEL_PATH, FEW_SHOT, LlamaCppBackend, StubBackend
 
 # Vector (X valence, Y initiative, Z stress, W inertia) that produces each mood
@@ -47,13 +48,6 @@ SCENARIOS = [
     ("NPC_1", "neutral", "ask about the quest", []),
 ]
 
-TONE_WORDS = {
-    "hostile": ["dare", "out", "leave", "enough", "watch", "careful", "regret", "back off",
-                "warn", "threat", "wrong", "don't", "no ", "not "],
-    "friendly": ["welcome", "friend", "glad", "happy", "pleasure", "help", "good", "please",
-                 "nice", "great", "sure", "of course"],
-}
-
 META_WORDS = ["the player", "mood", "style", "npc", "as an ai", "language model", "fact"]
 
 
@@ -70,12 +64,13 @@ def run_checks(reply, mood, expected):
         "no_copy": not any(r.lower() in low for _f, _a, r in FEW_SHOT),
         "facts": any(e in reply for e in expected) if expected else True,
     }
-    if mood in TONE_WORDS:
-        checks["tone"] = any(w in low for w in TONE_WORDS[mood])
+    if mood in ("hostile", "friendly"):
+        checks["tone"] = matches_tone(reply, mood)
     return checks
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows consoles default to cp1252
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--model", default=DEFAULT_MODEL_PATH)
     ap.add_argument("--stub", action="store_true")

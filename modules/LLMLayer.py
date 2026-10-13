@@ -168,7 +168,7 @@ class LlamaCppBackend(LLMBackend):
         self.temperature = temperature
         meta = self._llm.metadata
         self.name = meta.get("general.name", os.path.basename(model_path))
-        self._is_qwen = "qwen" in meta.get("general.architecture", "").lower()
+        self._is_qwen = meta.get("general.architecture", "").lower() == "qwen3"
         # Some models (LFM2.5) open a <think> block in the generation prompt; we close it
         # right away so the reply is the NPC line and not a reasoning trace.
         self._template = meta.get("tokenizer.chat_template", "")
