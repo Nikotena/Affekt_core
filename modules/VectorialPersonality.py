@@ -77,12 +77,12 @@ class VectorialPersonality:
     def mood(self) -> str:
         """Coarse label for the current emotional state (used for the graph and LLM payload)."""
         valence, _, stress, _ = self.vector
+        if valence <= -0.25:
+            return "hostile"
         if stress >= 0.6:
             return "tense"
         if valence >= 0.25:
             return "friendly"
-        if valence <= -0.25:
-            return "hostile"
         return "neutral"
 
     def get_state(self) -> Dict:

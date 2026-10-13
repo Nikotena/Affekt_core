@@ -40,13 +40,57 @@ _ACTION_NARRATION = (
     (("ask", "question"), "The player asks you a question."),
 )
 
-# Few-shot examples: (facts, player action, NPC line). Short, first person, in character.
-FEW_SHOT = (
-    (["You are Alan, the Bartender. Your mood: friendly", "Alan KNOWS Player"],
-     "The player greets you.", "Well, look who's back! The first round is on me."),
-    (["You are Kael, the Blacksmith. Your mood: hostile"],
+# The deterministic core decides HOW the NPC sounds; the model only words it.
+MOOD_STYLE = {
+    "friendly": "warm and welcoming; offer something",
+    "hostile": "openly hostile, rude and menacing; insult or threaten the player; never polite",
+    "tense": "nervous and wary; short, guarded sentences",
+    "neutral": "neutral and businesslike",
+}
+
+# Few-shot examples: (mood, facts, player action, NPC line). Short, first person, in character.
+_EXAMPLES = (
+    ("friendly", ["You are Alan, the Bartender.", "You know the player."],
+     "The player greets you.", "Look who's back! Sit down, I'll pour you something."),
+    ("friendly", ["You are Dara, the Fisherman.", "You sell a Fish for 3 coins."],
+     "The player wants to buy something from you.", "Of course, friend! That is 3 coins, and I'll pick the best one."),
+    ("hostile", ["You are Kael, the Blacksmith."],
      "The player attacks you.", "You dare raise a hand in my forge? Out, before I lose my temper!"),
+    ("hostile", ["You are Bran, the Guard."],
+     "The player greets you.", "Don't smile at me, stranger. Move along before I lose patience."),
+    ("hostile", ["You are Dara, the Fisherman.", "You sell a Fish for 3 coins."],
+     "The player wants to buy something from you.", "It costs 3 coins. Pay up and get out of my sight."),
+    ("tense", ["You are Mira, the Healer."],
+     "The player asks you a question.", "Quiet... I heard something outside. What do you want to know?"),
+    ("neutral", ["You are Dara, the Fisherman.", "You sell a Fish for 3 coins."],
+     "The player wants to buy something from you.", "A fish is 3 coins."),
+    ("neutral", ["You are Tomas, the Clerk."],
+     "The player asks you a question.", "Ask away. I have a few minutes."),
 )
+
+def style_line(mood: str) -> str:
+    return f"Style: {MOOD_STYLE[mood]}."
+
+
+def select_few_shot(mood: str, limit: int = 2):
+    """Examples for the current mood (they teach the tone), as (facts, action, reply)."""
+    same = [e for e in _EXAMPLES if e[0] == mood][:limit]
+    chosen = same or [e for e in _EXAMPLES if e[0] == "neutral"][:limit]
+    return [(facts + [style_line(m)], action, reply) for m, facts, action, reply in chosen]
+
+
+# Every example reply, used by the eval to detect verbatim copying
+FEW_SHOT = tuple((facts, action, reply) for _m, facts, action, reply in _EXAMPLES)
+
+
+def style_for(mood: str, initiative: float) -> str:
+    """Style instruction from the mood plus the initiative/dominance axis."""
+    style = MOOD_STYLE.get(mood, MOOD_STYLE["neutral"])
+    if initiative >= 0.2 and mood != "hostile":
+        style += "; take the initiative and ask or propose something"
+    elif initiative <= -0.2:
+        style += "; stay reserved and brief"
+    return f"Style: {style}."
 
 
 def narrate_action(action: str) -> str:
@@ -58,19 +102,32 @@ def narrate_action(action: str) -> str:
     return f"The player does this: {action}."
 
 
-def _user_turn(facts: List[str], situation: str) -> str:
-    lines = "\n".join(f"- {line}" for line in facts)
-    return f"/no_think\nFacts:\n{lines}\n\n{situation}"
+_HIDDEN_PREFIXES = ("NPC: ", "Scene: ", "Player earlier: ")  # engine bookkeeping, noise for the model
 
 
-def build_messages(payload: List[str], action: str) -> List[Dict[str, str]]:
+def _user_turn(facts: List[str], situation: str, no_think: bool = True) -> str:
+    style = next((f for f in facts if f.startswith("Style: ")), "")
+    shown = [f for f in facts if not f.startswith(("Style: ",) + _HIDDEN_PREFIXES)]
+    lines = "\n".join(f"- {line}" for line in shown)
+    prefix = "/no_think\n" if no_think else ""
+    return f"{prefix}Facts:\n{lines}\n\n{situation}\n{style}".rstrip()
+
+
+def mood_from_payload(payload: List[str]) -> str:
+    """Recover the mood from the payload's Style line (the engine only sends the style)."""
+    style = next((l for l in payload if l.startswith("Style: ")), "")
+    return next((m for m, text in MOOD_STYLE.items() if text in style), "neutral")
+
+
+def build_messages(payload: List[str], action: str, mood: Optional[str] = None,
+                   no_think: bool = True) -> List[Dict[str, str]]:
     """Chat messages: system prompt, few-shot turns, then the real situation.
     `/no_think` disables Qwen3's reasoning mode."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for facts, shot_action, reply in FEW_SHOT:
-        messages.append({"role": "user", "content": _user_turn(facts, shot_action)})
+    for facts, shot_action, reply in select_few_shot(mood or mood_from_payload(payload)):
+        messages.append({"role": "user", "content": _user_turn(facts, shot_action, no_think)})
         messages.append({"role": "assistant", "content": reply})
-    messages.append({"role": "user", "content": _user_turn(payload, narrate_action(action))})
+    messages.append({"role": "user", "content": _user_turn(payload, narrate_action(action), no_think)})
     return messages
 
 
@@ -90,8 +147,7 @@ class StubBackend(LLMBackend):
     """No model: echoes a deterministic line. Used by tests and as the default."""
 
     def generate(self, payload: List[str], action: str) -> str:
-        mood = next((l.rsplit("mood: ", 1)[1] for l in payload if "mood: " in l), "neutral")
-        return FALLBACK_LINES.get(mood, FALLBACK_LINES["neutral"])
+        return FALLBACK_LINES.get(mood_from_payload(payload), FALLBACK_LINES["neutral"])
 
 
 class LlamaCppBackend(LLMBackend):
@@ -99,7 +155,7 @@ class LlamaCppBackend(LLMBackend):
 
     def __init__(self, model_path: str = DEFAULT_MODEL_PATH, n_ctx: int = 1024,
                  n_threads: Optional[int] = None, max_tokens: int = 48,
-                 temperature: float = 0.7, n_gpu_layers: int = 0):
+                 temperature: float = 0.4, n_gpu_layers: int = 0):
         try:
             from llama_cpp import Llama
         except ImportError as e:
@@ -110,16 +166,31 @@ class LlamaCppBackend(LLMBackend):
                           n_gpu_layers=n_gpu_layers, verbose=False)
         self.max_tokens = max_tokens
         self.temperature = temperature
+        meta = self._llm.metadata
+        self.name = meta.get("general.name", os.path.basename(model_path))
+        self._is_qwen = "qwen" in meta.get("general.architecture", "").lower()
+        # Some models (LFM2.5) open a <think> block in the generation prompt; we close it
+        # right away so the reply is the NPC line and not a reasoning trace.
+        self._template = meta.get("tokenizer.chat_template", "")
+        self._formatter = None
+        if not self._is_qwen and self._template:
+            from llama_cpp.llama_chat_format import Jinja2ChatFormatter
+            tok = lambda t: self._llm.detokenize([t]).decode("utf-8", "ignore")
+            self._formatter = Jinja2ChatFormatter(
+                template=self._template, eos_token=tok(self._llm.token_eos()),
+                bos_token=tok(self._llm.token_bos()), add_generation_prompt=True)
 
     def generate(self, payload: List[str], action: str) -> str:
-        out = self._llm.create_chat_completion(
-            messages=build_messages(payload, action),
-            max_tokens=self.max_tokens,
-            temperature=self.temperature,
-            top_p=0.8,
-            top_k=20,
-        )
-        return clean_output(out["choices"][0]["message"]["content"])
+        messages = build_messages(payload, action, no_think=self._is_qwen)
+        sampling = dict(max_tokens=self.max_tokens, temperature=self.temperature, top_p=0.8, top_k=20)
+        if self._formatter is None:
+            out = self._llm.create_chat_completion(messages=messages, **sampling)
+            return clean_output(out["choices"][0]["message"]["content"])
+        prompt = self._formatter(messages=messages).prompt
+        if prompt.rstrip().endswith("<think>"):
+            prompt = prompt.rstrip() + "\n\n</think>\n\n"
+        out = self._llm.create_completion(prompt, stop=["<|im_end|>"], **sampling)
+        return clean_output(out["choices"][0]["text"])
 
 
 def load_backend(model_path: str = DEFAULT_MODEL_PATH) -> LLMBackend:

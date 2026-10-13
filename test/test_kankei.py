@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from KankeiEngine import KankeiEngine
 from modules.ContextFunction import ContextFunction
 from modules.GraphDatabase import GraphDatabase
+from modules.LLMLayer import build_messages, clean_output, narrate_action
 from modules.MemorySet import MemorySet
 from modules.VectorialPersonality import VectorialPersonality, CHOLERIC
 
@@ -114,6 +115,23 @@ class GraphTests(unittest.TestCase):
         self.assertIn("`since`: \"Act I\"", stmts)
 
 
+class LLMLayerTests(unittest.TestCase):
+    def test_action_is_narrated_in_second_person(self):
+        self.assertEqual(narrate_action("attack the NPC"), "The player attacks you.")
+        self.assertIn("dance", narrate_action("dance"))
+
+    def test_messages_have_few_shot_and_real_situation_last(self):
+        msgs = build_messages(["fact A"], "help the NPC")
+        self.assertEqual(msgs[0]["role"], "system")
+        self.assertEqual(msgs[-1]["role"], "user")
+        self.assertIn("fact A", msgs[-1]["content"])
+        self.assertIn("offers to help you", msgs[-1]["content"])
+        self.assertGreater(len([m for m in msgs if m["role"] == "assistant"]), 0)
+
+    def test_clean_output_strips_think_and_prefix(self):
+        self.assertEqual(clean_output("<think>x</think> Alan: \"Hi there\""), "Hi there")
+
+
 class EngineTests(unittest.TestCase):
     def test_pipeline_links_events_and_moods(self):
         e = make_engine()
@@ -129,6 +147,17 @@ class EngineTests(unittest.TestCase):
         self.assertNotIn(r["memory_event"], e.graph.nodes)
         self.assertTrue(e.graph.get_nodes_by_label("LongTermMemory"))
         self.assertTrue(e.graph.get_neighbors("NPC_0", "REMEMBERED"))
+
+    def test_llm_failure_falls_back(self):
+        class Boom:
+            def generate(self, payload, action):
+                raise RuntimeError("down")
+        e = KankeiEngine(llm=Boom())
+        e.initialize_modules()
+        e.running = True
+        r = e.process_action("NPC_1", "buy a potion")
+        self.assertTrue(r["llm_used"])
+        self.assertTrue(r["response"])
 
     def test_trigger_script_fires_from_engine(self):
         e, calls = make_engine(), []

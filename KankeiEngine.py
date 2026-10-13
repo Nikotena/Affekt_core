@@ -11,7 +11,7 @@ from modules.VectorialPersonality import VectorialPersonality
 from modules.MemorySet import MemorySet
 from modules.ContextFunction import ContextFunction
 from modules.GraphDatabase import GraphDatabase
-from modules.LLMLayer import LLMBackend, StubBackend, FALLBACK_LINES
+from modules.LLMLayer import LLMBackend, StubBackend, FALLBACK_LINES, style_for
 
 class KankeiEngine:
     def __init__(self, neo4j_uri: str = "bolt://localhost:7687",
@@ -87,14 +87,26 @@ class KankeiEngine:
             self.personalities[npc_id] = VectorialPersonality(npc_id)
         return self.personalities[npc_id]
 
-    def _graph_facts(self, npc_id: str, subgraph: Dict) -> List[str]:
-        """Turn the NPC's neighbourhood into short 'A REL B' lines for the LLM payload."""
-        names = {n["id"]: n["properties"].get("name", n["id"]) for n in subgraph["nodes"]}
-        return [
-            f"{names[e['source']]} {e['type']} {names[e['target']]}"
-            for e in subgraph["edges"]
-            if e["source"] == npc_id or e["target"] == npc_id
-        ]
+    def _graph_facts(self, npc_id: str, subgraph: Dict, action: str) -> List[str]:
+        """Natural-language facts from the NPC's neighbourhood, filtered by relevance to the action."""
+        nodes = {n["id"]: n for n in subgraph["nodes"]}
+        commerce = self.context.should_trigger_script(action) or any(
+            w in action.lower() for w in ("buy", "sell", "price", "ask"))
+        facts = []
+        for e in subgraph["edges"]:
+            if e["source"] != npc_id:
+                continue
+            target = nodes.get(e["target"])
+            if target is None:
+                continue
+            name, props = target["properties"].get("name"), target["properties"]
+            if e["type"] == "LOCATED_AT":
+                facts.append(f"You are at the {name}.")
+            elif e["type"] == "KNOWS":
+                facts.append(f"You know the {name.lower()}" + (f" since {e['properties']['since']}." if e["properties"].get("since") else "."))
+            elif e["type"] == "OWNS" and commerce:
+                facts.append(f"You sell a {name} for {props.get('price', '?')} coins.")
+        return facts
 
     def _consolidate(self) -> None:
         """Run memory consolidation and mirror new long-term concepts into the graph."""
@@ -189,18 +201,11 @@ class KankeiEngine:
             if self.graph.get_node("player_01") is not None:
                 self.graph.add_edge("player_01", "CAUSED", event_node_id)
 
-        short_term_strings = [
-            f"Player earlier: {e['phrase']}" for e in self.memory.get_short_term_context(npc_id)
-        ]
-
         # Step 3: Context function evaluation (runs registered trigger scripts)
         triggered = self.context.execute_context_function(npc_id, action)
 
         # Step 4: Build strict payload for LLM
-        subgraph = self.graph.subgraph_for(npc_id, depth=2)
-        who = f"You are {npc_node.properties['name']}, the {npc_node.properties['role']}. " if npc_node else ""
-        facts = [f"{who}Your mood: {personality.mood()}"] + self._graph_facts(npc_id, subgraph)
-        payload = self.context.build_strict_payload(npc_id, short_term_strings, facts=facts)
+        payload, subgraph = self.build_payload(npc_id, action)
         # The LLM is only called for meaningful moments; everything else is deterministic.
         use_llm = self.context.should_trigger_script(action) or event_node_id is not None
         response = self._generate_response(payload, npc_id, action, use_llm, personality.mood())
@@ -222,6 +227,19 @@ class KankeiEngine:
             "memory_event": event_node_id,
             "timestamp": time.time(),
         }
+
+    def build_payload(self, npc_id: str, action: str):
+        """Assemble the LLM payload for an NPC from its current state. Returns (payload, subgraph)."""
+        personality = self.personality_for(npc_id)
+        npc_node = self.graph.get_node(npc_id)
+        subgraph = self.graph.subgraph_for(npc_id, depth=2)
+        facts = []
+        if npc_node is not None:
+            facts.append(f"You are {npc_node.properties['name']}, the {npc_node.properties['role']}.")
+        facts += self._graph_facts(npc_id, subgraph, action)
+        facts.append(style_for(personality.mood(), personality.vector[1]))
+        recent = [f"Player earlier: {e['phrase']}" for e in self.memory.get_short_term_context(npc_id)]
+        return self.context.build_strict_payload(npc_id, recent, facts=facts), subgraph
 
     def _generate_response(self, payload: List[str], npc_id: str, action: str,
                            use_llm: bool, mood: str) -> str:
