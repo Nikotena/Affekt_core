@@ -68,15 +68,34 @@ def run_basic_tests():
         print(f"[FAIL] Test 4 FAILED: {e}")
         return False
     
-    # Test 5: Full engine action processing
+    # Test 5: Graph Database (in-memory primary + optional Neo4j)
+    try:
+        graph = engine.graph
+        graph.add_node("test_npc", "NPC", name="Test", role="Tester")
+        graph.add_node("test_loc", "Location", name="Testville")
+        graph.add_edge("test_npc", "LOCATED_AT", "test_loc")
+        neighbors = graph.get_neighbors("test_npc", rel_type="LOCATED_AT")
+        assert len(neighbors) == 1
+        sub = graph.subgraph_for("test_npc", depth=1)
+        assert len(sub["nodes"]) == 2
+        assert len(sub["edges"]) == 1
+        cypher = graph.export_cypher_batch()
+        assert len(cypher) >= 2
+        print("[PASS] Test 5: Graph Database nodes, edges, subgraph, export")
+    except Exception as e:
+        print(f"[FAIL] Test 5 FAILED: {e}")
+        return False
+    
+    # Test 6: Full engine action processing
     try:
         engine.running = True
         results = engine.run(10)
         assert len(results) == 10
         assert all("response" in r for r in results)
-        print("[PASS] Test 5: Full engine action processing")
+        assert all("graph_nodes" in r for r in results)
+        print("[PASS] Test 6: Full engine action processing")
     except Exception as e:
-        print(f"[FAIL] Test 5 FAILED: {e}")
+        print(f"[FAIL] Test 6 FAILED: {e}")
         return False
     
     print("\n=== All Basic Tests Passed ===")
@@ -99,11 +118,18 @@ def main():
         # Print summary of metrics
         total_payload_size = sum(r["payload_size"] for r in results)
         avg_payload_size = total_payload_size / len(results) if results else 0
+        max_payload_size = max((r["payload_size"] for r in results), default=0)
+        events_persisted = sum(1 for r in results if r.get("memory_event"))
         
         print(f"\n=== Engine Metrics ===")
         print(f"Total actions: {len(results)}")
         print(f"Average payload size: {avg_payload_size:.1f} tokens")
+        print(f"Max payload size: {max_payload_size} tokens")
+        print(f"Memory events persisted: {events_persisted}")
+        print(f"Graph nodes: {len(engine.graph.nodes)}")
+        print(f"Neo4j persistence active: {engine.graph.is_persistent()}")
         
+        engine.shutdown()
         return 0
     return 1
 
