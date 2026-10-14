@@ -5,3 +5,6 @@ model/Qwen3-0.6B-Q8_0.gguf
 model/
 data/
 .env
+.env
+.env.*
+!.env.example

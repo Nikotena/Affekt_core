@@ -3,7 +3,7 @@ OpenRouter backend (teacher for dataset generation).
 
 Same interface as LlamaCppBackend, so the dataset generator can swap teachers. Uses only
 the standard library. The API key is read from the OPENROUTER_API_KEY environment
-variable and never printed, stored or put in a row.
+variable or the project's .env file and is never printed, stored or put in a row.
 """
 
 import json
@@ -20,8 +20,35 @@ DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
 
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+KEY_NAME = "OPENROUTER_API_KEY"
+
+
 class OpenRouterError(RuntimeError):
     pass
+
+
+def load_key(env_file: Optional[str] = None) -> str:
+    """API key from the environment, else from the project's .env file ('' if neither).
+
+    Only KEY_NAME is read from .env; nothing else is exported and the value is never logged.
+    """
+    key = os.environ.get(KEY_NAME, "").strip()
+    if key:
+        return key
+    path = env_file or os.path.join(ROOT, ".env")
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("export "):
+                    line = line[len("export "):]
+                name, sep, value = line.partition("=")
+                if sep and name.strip() == KEY_NAME:
+                    return value.strip().strip("\"'")
+    except OSError:
+        pass
+    return ""
 
 
 class OpenRouterBackend(LLMBackend):
@@ -29,9 +56,9 @@ class OpenRouterBackend(LLMBackend):
                  temperature: float = 0.7, max_tokens: int = 160, min_interval: float = 3.0,
                  retries: int = 6, disable_reasoning: bool = True,
                  opener: Optional[Callable] = None, sleep: Callable[[float], None] = time.sleep):
-        self._key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
+        self._key = api_key or load_key()
         if not self._key:
-            raise OpenRouterError("OPENROUTER_API_KEY is not set (set it in your terminal, not in code)")
+            raise OpenRouterError(f"{KEY_NAME} not found: set it in the environment or in .env")
         self.model = model
         self.name = model
         self.temperature = temperature

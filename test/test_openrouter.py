@@ -4,6 +4,7 @@ import io
 import json
 import os
 import sys
+import tempfile
 import unittest
 import urllib.error
 
@@ -11,7 +12,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "test"))
 
-from modules.OpenRouterBackend import DEFAULT_MODEL, OpenRouterBackend, OpenRouterError
+import modules.OpenRouterBackend as orb
+from modules.OpenRouterBackend import DEFAULT_MODEL, OpenRouterBackend, OpenRouterError, load_key
 from training.generate_dataset import make_teacher
 
 PAYLOAD = ["World: Tavern", "NPC: Oswin", "You are Oswin, the Blacksmith.",
@@ -73,11 +75,14 @@ class OpenRouterTests(unittest.TestCase):
         self.assertNotIn("/no_think", body["messages"][-1]["content"])  # Qwen-only trick
 
     def test_missing_key_and_key_never_exposed(self):
-        old = os.environ.pop("OPENROUTER_API_KEY", None)
+        old, old_root = os.environ.pop("OPENROUTER_API_KEY", None), orb.ROOT
         try:
-            with self.assertRaises(OpenRouterError):
-                OpenRouterBackend()
+            with tempfile.TemporaryDirectory() as empty:
+                orb.ROOT = empty  # no .env here, whatever the real project has
+                with self.assertRaises(OpenRouterError):
+                    OpenRouterBackend()
         finally:
+            orb.ROOT = old_root
             if old is not None:
                 os.environ["OPENROUTER_API_KEY"] = old
         b, _ = backend(FakeNet())
@@ -125,6 +130,41 @@ class OpenRouterTests(unittest.TestCase):
         b.generate(PAYLOAD, "greet the NPC")
         b.generate(PAYLOAD, "greet the NPC")
         self.assertTrue(sleeps and 0 < sleeps[-1] <= 5)
+
+
+class DotEnvTests(unittest.TestCase):
+    def setUp(self):
+        self._old = os.environ.pop("OPENROUTER_API_KEY", None)
+
+    def tearDown(self):
+        if self._old is not None:
+            os.environ["OPENROUTER_API_KEY"] = self._old
+        else:
+            os.environ.pop("OPENROUTER_API_KEY", None)
+
+    def write_env(self, text):
+        f = tempfile.NamedTemporaryFile("w", suffix=".env", delete=False, encoding="utf-8")
+        f.write(text)
+        f.close()
+        self.addCleanup(os.unlink, f.name)
+        return f.name
+
+    def test_reads_only_the_key_from_dotenv(self):
+        path = self.write_env("# comment\nOTHER=1\nOPENROUTER_API_KEY=sk-or-abc123\n")
+        self.assertEqual(load_key(path), "sk-or-abc123")
+        self.assertNotIn("OTHER", os.environ)
+
+    def test_quotes_export_and_bom(self):
+        self.assertEqual(load_key(self.write_env('export OPENROUTER_API_KEY="sk-or-q"\n')), "sk-or-q")
+        self.assertEqual(load_key(self.write_env("\ufeffOPENROUTER_API_KEY='sk-or-b'\r\n")), "sk-or-b")
+
+    def test_environment_wins_over_dotenv(self):
+        os.environ["OPENROUTER_API_KEY"] = "from-env"
+        self.assertEqual(load_key(self.write_env("OPENROUTER_API_KEY=from-file\n")), "from-env")
+
+    def test_missing_file_or_key(self):
+        self.assertEqual(load_key("does-not-exist.env"), "")
+        self.assertEqual(load_key(self.write_env("OTHER=1\n")), "")
 
 
 class TeacherSelectionTests(unittest.TestCase):
