@@ -18,9 +18,9 @@ ROLES = [
     "Baker", "Fisherman", "Hunter", "Clerk", "Beekeeper", "Tailor", "Innkeeper", "Scholar",
     "Farmer", "Sailor", "Carpenter", "Miller", "Cook", "Messenger", "Potter",
     # held out entirely from training (see HELD_OUT_ROLES)
-    "Jeweler", "Cartographer", "Glassblower", "Priest",
+    "Jeweler", "Priest",
 ]
-HELD_OUT_ROLES = {"Jeweler", "Cartographer", "Glassblower", "Priest"}
+HELD_OUT_ROLES = {"Jeweler", "Priest"}
 
 NAMES = [
     "Oswin", "Brenna", "Tavish", "Lena", "Cormac", "Ilse", "Rurik", "Maeve", "Dorian", "Sela",
@@ -38,12 +38,13 @@ ITEMS = [
     ("Lamp", None), ("Waterskin", None), ("Hammer", None), ("Net", None), ("Cheese wheel", None),
     ("Ring", None), ("Scroll", None), ("Torch", None), ("Backpack", None), ("Apple basket", None),
     # held out entirely from training (see HELD_OUT_ITEMS)
-    ("Compass", None), ("Amulet", None), ("Telescope", None), ("Saddle", None), ("Flute", None),
-    ("Mirror", None),
+    ("Compass", None), ("Amulet", None), ("Telescope", None),
 ]
-HELD_OUT_ITEMS = {"Compass", "Amulet", "Telescope", "Saddle", "Flute", "Mirror"}
+HELD_OUT_ITEMS = {"Compass", "Amulet", "Telescope"}
 
 MOODS = ["friendly", "hostile", "neutral", "tense"]
+# hostile/tense lines are the hardest for the teacher to get right, so oversample them
+MOOD_WEIGHTS = {"friendly": 1.0, "hostile": 1.8, "neutral": 0.7, "tense": 1.4}
 
 # kind -> raw player actions (what the engine would receive)
 ACTIONS: Dict[str, List[str]] = {
@@ -101,8 +102,9 @@ def make_payload(sc: Scenario) -> List[str]:
     return lines
 
 
-def _split_for(role: str, item: Optional[str], rng: random.Random, val_rate: float) -> str:
-    if role in HELD_OUT_ROLES or (item in HELD_OUT_ITEMS):
+def _split_for(role: str, item: Optional[str], action: str, rng: random.Random, val_rate: float) -> str:
+    # an item only counts as "unseen" if the prompt actually mentions it
+    if role in HELD_OUT_ROLES or (item in HELD_OUT_ITEMS and _commerce(action)):
         return "eval_unseen"
     return "eval_seen" if rng.random() < val_rate else "train"
 
@@ -118,7 +120,7 @@ def generate_scenarios(n: int, seed: int = 0, val_rate: float = 0.08,
     while len(out) < n and attempts < n * 50:
         attempts += 1
         role = rng.choice(ROLES)
-        mood = rng.choice(MOODS)
+        mood = rng.choices(MOODS, [MOOD_WEIGHTS[m] for m in MOODS])[0]
         kind = rng.choices(kinds, weights)[0]
         item, fixed = rng.choice(ITEMS)
         price = fixed if fixed is not None else rng.choice([2, 3, 5, 7, 8, 12, 15, 18, 20, 30, 35, 45, 60, 75, 120, 150])
@@ -136,7 +138,7 @@ def generate_scenarios(n: int, seed: int = 0, val_rate: float = 0.08,
             place=rng.choice(PLACES), mood=mood, initiative=rng.choice(INITIATIVES),
             action=raw, kind=kind, item=item, price=price,
             knows_player=knows, knows_since=rng.choice(KNOWS_SINCE) if knows else None,
-            split=_split_for(role, item, rng, val_rate),
+            split=_split_for(role, item, raw, rng, val_rate),
         )
         if kind in ("buy", "trade") and _commerce(raw):
             sc.expected = [str(price)]

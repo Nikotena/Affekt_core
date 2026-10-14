@@ -55,10 +55,21 @@ class ScenarioTests(unittest.TestCase):
             self.assertNotIn(k, keys)
             self.assertNotIn(k[:3], keys)
 
+    def test_mood_mix_favours_the_hard_moods(self):
+        from collections import Counter
+        c = Counter(s.mood for s in generate_scenarios(2000, seed=6))
+        self.assertGreater(c["hostile"], c["neutral"])
+        self.assertGreater(c["tense"], c["neutral"])
+
+    def test_unseen_share_is_small(self):
+        scs = generate_scenarios(2000, seed=7)
+        unseen = sum(s.split == "eval_unseen" for s in scs) / len(scs)
+        self.assertLess(unseen, 0.25)
+
     def test_held_out_roles_and_items_never_reach_train(self):
         scs = generate_scenarios(1500, seed=4)
         for sc in scs:
-            if sc.role in HELD_OUT_ROLES or sc.item in HELD_OUT_ITEMS:
+            if sc.role in HELD_OUT_ROLES or (sc.item in HELD_OUT_ITEMS and "coins" in " ".join(make_payload(sc))):
                 self.assertEqual(sc.split, "eval_unseen")
             else:
                 self.assertIn(sc.split, ("train", "eval_seen"))
@@ -87,10 +98,38 @@ class FilterTests(unittest.TestCase):
             "She says nothing and leaves the room, fool.": "third_person",
             "Alan: Get out of my tavern, you fool.": "name_prefix",
             "Out.": "too_short_words",
-            "The player is a fool, so get out.": "no_meta",
+            "The player is a fool, so get out.": "reasoning_leak",
+            "I should be hostile here, so get out, fool.": "reasoning_leak",
+            "Get off me, you piece of shit, fool.": "profanity",
         }
         for reply, why in cases.items():
             self.assertEqual(reject_reason(reply, "hostile", []), why, reply)
+
+    def test_reciting_own_name_or_role_is_rejected(self):
+        self.assertEqual(reject_reason("Greetings. I'm Lorcan, the Miller. What do you need?", "friendly", [],
+                                       name="Lorcan", role="Miller"), "recites_identity")
+        self.assertEqual(reject_reason("Welcome, friend! I am a Miller, glad to help.", "friendly", [],
+                                       name="Lorcan", role="Miller"), "recites_identity")
+        self.assertIsNone(reject_reason("Welcome, friend! The mill is busy today, glad you came.",
+                                        "friendly", [], name="Lorcan", role="Miller"))
+
+    def test_wrong_place_is_rejected(self):
+        line = "Welcome, friend! The forge has a good fire tonight."
+        self.assertEqual(reject_reason(line, "friendly", [], place="Chapel"), "wrong_place")
+        self.assertIsNone(reject_reason(line, "friendly", [], place="Forge"))
+
+    def test_invented_or_wrong_prices_are_rejected(self):
+        line = "Welcome, friend! Mirrors are 2 coins each today."
+        self.assertEqual(reject_reason(line, "friendly", [], price=45, price_shown=False), "invented_price")
+        self.assertEqual(reject_reason(line, "friendly", [], price=45, price_shown=True), "invented_price")
+        ok = "Welcome, friend! That one is 45 coins, a fair price."
+        self.assertIsNone(reject_reason(ok, "friendly", [], price=45, price_shown=True))
+
+    def test_profanity_can_be_allowed(self):
+        line = "Get out of my shop, you fool, damn your hide."
+        self.assertIsNone(reject_reason(line, "hostile", []))
+        self.assertEqual(reject_reason(line.replace("damn", "fuck"), "hostile", []), "profanity")
+        self.assertIsNone(reject_reason(line.replace("damn", "fuck"), "hostile", [], allow_profanity=True))
 
     def test_accepts_a_clean_line(self):
         self.assertIsNone(reject_reason("You dare insult me? Get out before I lose my temper.", "hostile", []))

@@ -80,24 +80,48 @@ def append_jsonl(path, row, retries=5):
             time.sleep(1 + attempt)
 
 
-def cmd_generate(args):
+def make_teacher(args):
+    """Build the teacher backend. Returns (backend, label recorded in every row)."""
+    if args.teacher == "openrouter":
+        from modules.OpenRouterBackend import DEFAULT_MODEL, OpenRouterBackend
+        if not args.teacher_license:
+            sys.exit("--teacher-license is required with --teacher openrouter: write down the "
+                     "license/terms that allow training on this model's outputs (check its model card).")
+        model = args.model or DEFAULT_MODEL
+        teacher = OpenRouterBackend(model, temperature=args.temperature, min_interval=args.min_interval)
+        return teacher, model
     from modules.LLMLayer import LlamaCppBackend
+    model = args.model or DEFAULT_TEACHER
+    return LlamaCppBackend(model, temperature=args.temperature, n_ctx=1024), os.path.basename(model)
+
+
+def cmd_generate(args):
     scenarios = generate_scenarios(args.n, seed=args.seed, exclude_keys=bench_keys())
     done = {r["id"] for r in read_jsonl(args.out)}
     todo = [s for s in scenarios if s.id not in done]
     print(f"{len(scenarios)} scenarios, {len(done)} already generated, {len(todo)} to do")
     if not todo:
         return
-    teacher = LlamaCppBackend(args.model, temperature=args.temperature, n_ctx=1024)
+    teacher, label = make_teacher(args)
     teacher.shots = args.shots
     set_example_seed(args.seed)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    start = time.time()
+    start, failed = time.time(), 0
     for i, sc in enumerate(todo, 1):
         payload = make_payload(sc)
-        reply = teacher.generate(payload, sc.action)
-        row = {**sc.to_dict(), "payload": payload, "reply": reply,
-               "teacher": os.path.basename(args.model)}
+        try:
+            reply = teacher.generate(payload, sc.action)
+        except Exception as e:  # keep going on transient errors; the row is retried on the next run
+            if any(code in str(e) for code in ("HTTP 401", "HTTP 402", "HTTP 403")):
+                sys.exit(f"stopping: {e}")
+            failed += 1
+            print(f"  skipped {sc.id}: {str(e)[:120]}", flush=True)
+            if failed >= args.max_failures:
+                sys.exit(f"stopping after {failed} failures")
+            continue
+        row = {**sc.to_dict(), "payload": payload, "reply": reply, "teacher": label}
+        if args.teacher == "openrouter":
+            row["teacher_license"] = args.teacher_license
         append_jsonl(args.out, row)
         if i % 10 == 0 or i == len(todo):
             rate = (time.time() - start) / i
@@ -116,7 +140,10 @@ def cmd_filter(args):
     raw = read_jsonl(args.raw)
     reasons, clean = Counter(), []
     for row in raw:
-        why = reject_reason(row["reply"], row["mood"], row["expected"])
+        why = reject_reason(row["reply"], row["mood"], row["expected"], name=row["name"],
+                            role=row["role"], allow_profanity=getattr(args, "allow_profanity", False),
+                            place=row["place"], price=row["price"],
+                            price_shown=any("coins." in l for l in row["payload"]))
         if why:
             reasons[why] += 1
             row["rejected"] = why
@@ -167,7 +194,11 @@ def main():
     g.add_argument("--n", type=int, default=200)
     g.add_argument("--seed", type=int, default=0)
     g.add_argument("--out", default="data/raw.jsonl")
-    g.add_argument("--model", default=DEFAULT_TEACHER)
+    g.add_argument("--teacher", choices=["local", "openrouter"], default="local")
+    g.add_argument("--model", default=None, help="GGUF path (local) or OpenRouter model id")
+    g.add_argument("--teacher-license", default="", help="license/terms allowing training on the outputs (required for openrouter)")
+    g.add_argument("--min-interval", type=float, default=3.0, help="seconds between API calls (free tier limits)")
+    g.add_argument("--max-failures", type=int, default=20)
     g.add_argument("--temperature", type=float, default=0.7)
     g.add_argument("--shots", type=int, default=3)
     g.set_defaults(fn=cmd_generate)
@@ -175,6 +206,7 @@ def main():
     f = sub.add_parser("filter")
     f.add_argument("--raw", default="data/raw.jsonl")
     f.add_argument("--out-dir", default="data")
+    f.add_argument("--allow-profanity", action="store_true")
     f.set_defaults(fn=cmd_filter)
 
     r = sub.add_parser("review")

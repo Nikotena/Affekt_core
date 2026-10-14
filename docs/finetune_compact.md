@@ -35,7 +35,9 @@ Estado: PROPUESTA. Los umbrales de "Success metric" y "Guardrails" son mios y ha
 **Labels and data snapshot:**
 - Entrada: payload exacto que produce `KankeiEngine.build_payload` (misma estructura que en juego).
 - Salida: linea del NPC generada por el profesor y filtrada.
-- Profesor: TBrilliance 2.6B (principal); MEGABRAIN 1.2B opcional para variedad en lineas neutras.
+- Profesor: nvidia/nemotron-3-ultra-550b-a55b:free via OpenRouter (`--teacher openrouter`), elegido porque se espera una
+  licencia que permita entrenar con sus salidas. PENDIENTE DE VERIFICAR por Aaron en la ficha del modelo; la licencia
+  se registra en cada fila (`--teacher-license`). TBrilliance 2.6B queda como alternativa local (14 s/respuesta en CPU).
 - Escenarios: rejilla de NPC (rol/nombre) x animo x accion x objeto/precio. Los objetos y precios varian ampliamente; incluir tambien los del juego.
 - Filtro: reutilizar `run_checks` + rechazar acotaciones, tercera persona, > 3 frases, casi-duplicados.
 - Version del dataset: hash del archivo + semilla de generacion guardados junto al modelo.
