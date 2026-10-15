@@ -111,6 +111,31 @@ Neo4j persistence active: False
 
 ---
 
+## Arranque rápido con Gemma 4 (demo / servidor)
+
+```python
+from KankeiEngine import create_engine
+
+engine = create_engine()                 # busca el modelo en ./model, CPU
+engine = create_engine(n_gpu_layers=-1)  # en la nube con GPU (llama-cpp-python compilado con CUDA)
+r = engine.process_action("NPC_1", "Hey Marta, how much for a healing potion?")
+print(r["response"], r["intent"], r["mood"])
+```
+
+- El modelo se busca en este orden: argumento `model_path=`, variable de entorno `KANKEI_MODEL`,
+  y `./model/**/gemma-4-E2B-it-Q4_0.gguf` (o cualquier `gemma-4*.gguf` de más de 500 MB, para
+  ignorar descargas cortadas). Si no hay modelo, lanza un error claro en vez de responder con
+  frases enlatadas.
+- Capas en GPU: argumento `n_gpu_layers=` o variable `KANKEI_GPU_LAYERS`.
+- Configuración medida como la mejor: 2 ejemplos por llamada tomados de 5 conjuntos fijos por
+  ánimo (el comienzo del prompt se repite y `llama.cpp` lo reutiliza), temperatura 0.5,
+  `top_p` 0.9, `top_k` 40, y el precio pedido explícitamente en compras y regateos.
+- `create_engine(llm=StubBackend())` crea el motor sin modelo (pruebas).
+- El primer turno de cada combinación (ánimo, conjunto de ejemplos) es más lento mientras se
+  llena la caché. `create_engine(warm_up=True)` la llena al arrancar (19 prefijos, unos 90 s en
+  CPU, segundos con GPU; la caché ocupa ~80 MB) y baja el turno medio de 5.7 s a 3.7 s en CPU.
+  Recomendado en el servidor.
+
 ## Texto libre del jugador
 
 El motor entiende lo que el jugador escribe con `modules/IntentParser.py`, un analizador por

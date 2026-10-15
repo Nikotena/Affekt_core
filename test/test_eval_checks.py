@@ -6,7 +6,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from eval_llm import leaks_example
+from eval_llm import leaks_example, run_checks
 from modules.LLMLayer import _EXAMPLES, MOOD_STYLE, narrate_action, select_few_shot, set_example_seed
 
 
@@ -18,6 +18,14 @@ class LeakTests(unittest.TestCase):
     def test_ignores_generic_phrases(self):
         self.assertFalse(leaks_example("What do you want from me?"))
         self.assertFalse(leaks_example("Nothing like this has happened before."))
+
+
+class MetaWordTests(unittest.TestCase):
+    def test_meta_words_match_whole_words_only(self):
+        self.assertTrue(run_checks("You'll get no satisfaction from me, fool.", "hostile", [])["no_meta"])
+        self.assertTrue(run_checks("A factory worker? Hah.", "hostile", [])["no_meta"])
+        self.assertFalse(run_checks("The player is rude.", "hostile", [])["no_meta"])
+        self.assertFalse(run_checks("Your mood is foul.", "hostile", [])["no_meta"])
 
 
 class RotationTests(unittest.TestCase):

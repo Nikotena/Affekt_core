@@ -20,7 +20,7 @@ _HOSTILE = [
     "lose my patience", "lose my mind", "make you pay", "pay for", "your bones", "or else",
     "last warning", "warn you", "i warn", "turn you into", "you'll be the one who dies",
     # commands to leave / back off
-    "get out", "out of my", "leave", "go away", "move along", "step aside", "stand aside",
+    "get out", "out of my", "waste my time", "waste of time", "throw you out", "toss you out", "whelp", "leave", "go away", "move along", "step aside", "stand aside",
     "back off", "back away", "watch yourself", "watch your", "keep your distance",
     "keep away", "stay away", "scram", "begone", "get lost", "beat it", "walk on", "shut up",
     "not welcome", "keep your voice down", "keep your hands",

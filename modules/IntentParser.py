@@ -36,7 +36,7 @@ INTENT_DELTAS: Dict[str, List[float]] = {
 }
 
 COMMERCE_INTENTS = {"buy", "haggle", "sell"}
-COMMERCE_WORDS = ("sell", "give", "unlock", "buy", "trade", "price", "ask", "purchase")
+COMMERCE_WORDS = ("sell", "buy", "trade", "purchase", "price", "cost", "how much")
 
 
 def _rx(*patterns: str):

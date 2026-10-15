@@ -9,6 +9,7 @@ Target model: Qwen3-0.6B (GGUF, Q8_0) running locally through llama-cpp-python.
 import os
 import random
 import re
+import time
 from typing import Dict, List, Optional
 
 from modules.IntentParser import parse
@@ -52,7 +53,7 @@ _INTENT_NARRATION = {
 
 # The deterministic core decides HOW the NPC sounds; the model only words it.
 MOOD_STYLE = {
-    "friendly": "warm and welcoming; offer something",
+    "friendly": "warm and welcoming",
     "hostile": "openly hostile, rude and menacing; insult or threaten the player; never polite",
     "tense": "nervous and wary; short, guarded sentences",
     "neutral": "neutral and businesslike",
@@ -138,17 +139,40 @@ def style_line(mood: str) -> str:
     return f"Style: {MOOD_STYLE[mood]}."
 
 
+def _mood_pool(mood: str):
+    return [e for e in _EXAMPLES if e[0] == mood] or [e for e in _EXAMPLES if e[0] == "neutral"]
+
+
+def _window(pool, v: int, limit: int):
+    # slide by one so every v gives a different set (stride `limit` repeated sets when the pool is small)
+    return [pool[(v + j) % len(pool)] for j in range(min(limit, len(pool)))]
+
+
+def _with_style(window):
+    return [(facts + [style_line(m)], act, reply) for m, facts, act, reply in window]
+
+
+def example_windows(mood: str, limit: int):
+    """Every example set that bounded rotation can show for `mood` (empty if rotation is off).
+
+    Each one is a distinct prompt prefix; the warm-up evaluates them all ahead of time.
+    """
+    if not _EXAMPLE_VARIANTS or limit <= 0:
+        return []
+    pool = _mood_pool(mood)
+    return [_with_style(_window(pool, v, limit)) for v in range(min(_EXAMPLE_VARIANTS, len(pool)))]
+
+
 def select_few_shot(mood: str, limit: int = 3, action: Optional[str] = None):
     """Few-shot examples for the current mood as (facts, action, reply).
 
     One example matches `action` (the narrated player action) when the pool has one, so the
     model sees the right format; the rest are random, so no single phrase dominates.
     """
-    same = [e for e in _EXAMPLES if e[0] == mood] or [e for e in _EXAMPLES if e[0] == "neutral"]
+    same = _mood_pool(mood)
     if _EXAMPLE_VARIANTS:
         v = _rng.randrange(min(_EXAMPLE_VARIANTS, len(same)))
-        window = [same[(v * limit + j) % len(same)] for j in range(min(limit, len(same)))]
-        return [(facts + [style_line(m)], act, reply) for m, facts, act, reply in window]
+        return _with_style(_window(same, v, limit))
     chosen = []
     matching = [e for e in same if action and e[2] == action]
     if matching:
@@ -181,7 +205,7 @@ def narrate_action(action: str) -> str:
     return _INTENT_NARRATION.get(parsed.intent) or f"The player does this: {action}."
 
 
-_HIDDEN_PREFIXES = ("NPC: ", "Scene: ", "Player earlier: ")  # engine bookkeeping, noise for the model
+_HIDDEN_PREFIXES = ("NPC: ", "Scene: ", "Player earlier: ", "Last reply: ")  # engine bookkeeping, noise for the model
 
 
 def _user_turn(facts: List[str], situation: str, no_think: bool = True) -> str:
@@ -189,7 +213,16 @@ def _user_turn(facts: List[str], situation: str, no_think: bool = True) -> str:
     shown = [f for f in facts if not f.startswith(("Style: ",) + _HIDDEN_PREFIXES)]
     lines = "\n".join(f"- {line}" for line in shown)
     prefix = "/no_think\n" if no_think else ""
-    return f"{prefix}Facts:\n{lines}\n\n{situation}\n{style}".rstrip()
+    ask = ""
+    if situation.startswith("The player wants to buy") or "haggle" in situation:
+        price = next((m.group(1) for f in shown if (m := re.search(r"for (\d+) coins\.", f))), None)
+        if price:  # the engine knows the price: do not leave it to the model to remember to say it
+            ask = f"\nSay the price: {price} coins."
+    last = next((f[len("Last reply: "):] for f in facts if f.startswith("Last reply: ")), "")
+    if last:  # models fall into a habit ("Watch your tone..." six times in a row); name it and forbid it
+        opening = " ".join(last.split()[:3])
+        ask += f"\nDo not start like your last reply (\"{opening}...\")."
+    return f"{prefix}Facts:\n{lines}\n\n{situation}\n{style}{ask}".rstrip()
 
 
 def mood_from_payload(payload: List[str]) -> str:
@@ -199,13 +232,15 @@ def mood_from_payload(payload: List[str]) -> str:
 
 
 def build_messages(payload: List[str], action: str, mood: Optional[str] = None,
-                   no_think: bool = True, shots: int = 3) -> List[Dict[str, str]]:
+                   no_think: bool = True, shots: int = 3,
+                   examples: Optional[list] = None) -> List[Dict[str, str]]:
     """Chat messages: system prompt, few-shot turns, then the real situation.
     `/no_think` disables Qwen3's reasoning mode. `shots=0` gives the zero-shot prompt that a
     fine-tuned model is trained and served with."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-    examples = select_few_shot(mood or mood_from_payload(payload), limit=shots,
-                               action=narrate_action(action)) if shots > 0 else []
+    if examples is None:
+        examples = select_few_shot(mood or mood_from_payload(payload), limit=shots,
+                                   action=narrate_action(action)) if shots > 0 else []
     for facts, shot_action, reply in examples:
         messages.append({"role": "user", "content": _user_turn(facts, shot_action, no_think)})
         messages.append({"role": "assistant", "content": reply})
@@ -223,6 +258,10 @@ def clean_output(text: str) -> str:
 class LLMBackend:
     def generate(self, payload: List[str], action: str) -> str:
         raise NotImplementedError
+
+    def warm_up(self, moods=None) -> Dict[str, float]:
+        """Prepare the backend before the first player (nothing to do by default)."""
+        return {"prefixes": 0, "seconds": 0.0}
 
 
 class StubBackend(LLMBackend):
@@ -270,7 +309,23 @@ class LlamaCppBackend(LLMBackend):
 
     def generate(self, payload: List[str], action: str) -> str:
         messages = build_messages(payload, action, no_think=self._is_qwen, shots=self.shots)
-        sampling = dict(max_tokens=self.max_tokens, temperature=self.temperature, top_p=self.top_p, top_k=self.top_k)
+        return self._complete(messages, self.max_tokens)
+
+    def warm_up(self, moods=None) -> Dict[str, float]:
+        """Read every example-set prompt once (each mood x set) so the prompt cache is full
+        before the first player. Only meaningful with bounded rotation (set_example_variants)."""
+        started, n = time.time(), 0
+        for mood in (moods or MOOD_STYLE):
+            for window in example_windows(mood, self.shots):
+                payload = ["You are Marta, the Merchant.", "You are at the Market.", style_for(mood, 0.0)]
+                messages = build_messages(payload, "Hello there!", mood=mood, no_think=self._is_qwen,
+                                          shots=self.shots, examples=window)
+                self._complete(messages, 1)  # one token is enough: the cost is reading the prompt
+                n += 1
+        return {"prefixes": n, "seconds": round(time.time() - started, 1)}
+
+    def _complete(self, messages, max_tokens: int) -> str:
+        sampling = dict(max_tokens=max_tokens, temperature=self.temperature, top_p=self.top_p, top_k=self.top_k)
         if self._formatter is None:
             out = self._llm.create_chat_completion(messages=messages, **sampling)
             return clean_output(out["choices"][0]["message"]["content"])

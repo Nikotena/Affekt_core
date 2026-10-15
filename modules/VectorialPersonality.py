@@ -11,7 +11,7 @@ NORMAL, SANGUINE, CHOLERIC, MELANCHOLIC, PHLEGMATIC = range(5)
 # Value ranges per axis: X valence, Y initiative, Z stress, W inertia
 _RANGES = ((-1.0, 1.0), (-1.0, 1.0), (0.0, 1.0), (0.0, 1.0))
 
-DECAY_FACTOR = 0.1   # pull towards baseline per update (low inertia only)
+DECAY_FACTOR = 0.2   # pull towards baseline per update (low inertia only); 0.1 left NPCs hostile for 15 turns
 LOW_INERTIA = 0.7    # W below this decays towards baseline
 HIGH_INERTIA = 0.8   # W at/above this halves incoming change (persistence rule)
 

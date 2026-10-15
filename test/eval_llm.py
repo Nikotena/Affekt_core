@@ -81,7 +81,7 @@ def run_checks(reply, mood, expected):
     checks = {
         "non_empty": bool(reply.strip()),
         "short": len(reply) <= 220 and len(sentences(reply)) <= 3,
-        "no_meta": not any(w in low for w in META_WORDS),
+        "no_meta": not any(re.search(r"\b" + re.escape(w) + r"s?\b", low) for w in META_WORDS),
         "no_copy": not any(r.lower() in low for _f, _a, r in FEW_SHOT),
         "no_leak": not leaks_example(reply),
         "facts": any(e in normalize_prices(reply) for e in expected) if expected else True,  # "twenty-five coins" counts

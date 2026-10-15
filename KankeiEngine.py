@@ -4,6 +4,8 @@ Kankei Engine - Main Engine Controller
 Coordinates all modules and implements the 80/20 architecture
 """
 
+import glob
+import os
 import time
 from typing import Dict, List, Optional
 
@@ -12,7 +14,8 @@ from modules.MemorySet import MemorySet
 from modules.ContextFunction import ContextFunction
 from modules.GraphDatabase import GraphDatabase
 from modules.IntentParser import IntentParser, is_commerce
-from modules.LLMLayer import LLMBackend, StubBackend, FALLBACK_LINES, style_for
+from modules.LLMLayer import (LLMBackend, LlamaCppBackend, StubBackend, FALLBACK_LINES, style_for,
+                              set_example_variants)
 
 class KankeiEngine:
     def __init__(self, neo4j_uri: str = "bolt://localhost:7687",
@@ -24,6 +27,8 @@ class KankeiEngine:
         self.llm: LLMBackend = llm or StubBackend()
         self.personalities: Dict[str, VectorialPersonality] = {}
         self.parser = IntentParser()
+        self._last_reply: Dict[str, str] = {}
+        self.warm_up_stats: Optional[Dict[str, float]] = None
         self.memory = MemorySet()
         self.context = ContextFunction()
         # Passive persistence layer (in-memory primary graph + optional Neo4j)
@@ -203,6 +208,7 @@ class KankeiEngine:
         use_llm = (self.context.should_trigger_script(text) or event_node_id is not None
                    or parsed.intent != "other" or len(text.split()) > 2)
         response = self._generate_response(payload, npc_id, text, use_llm, personality.mood())
+        self._last_reply[npc_id] = response
 
         # Step 5: Consolidate and forget
         self._consolidate()
@@ -224,6 +230,11 @@ class KankeiEngine:
             "memory_event": event_node_id,
             "timestamp": time.time(),
         }
+
+    def warm_up(self) -> Dict[str, float]:
+        """Fill the language model's prompt cache ahead of time. Returns {"prefixes", "seconds"}."""
+        self.warm_up_stats = self.llm.warm_up()
+        return self.warm_up_stats
 
     def names_for(self, npc_id: str) -> List[str]:
         """Names the player may use to address this NPC: its name plus any nicknames."""
@@ -251,6 +262,8 @@ class KankeiEngine:
             facts.append(f"You are {npc_node.properties['name']}, the {npc_node.properties['role']}.")
         facts += self._graph_facts(npc_id, subgraph, action)
         facts.append(style_for(personality.mood(), personality.vector[1]))
+        if self._last_reply.get(npc_id):
+            facts.append("Last reply: " + self._last_reply[npc_id])
         recent = [f"Player earlier: {e['phrase']}" for e in self.memory.get_short_term_context(npc_id)]
         return self.context.build_strict_payload(npc_id, recent, facts=facts), subgraph
 
@@ -300,6 +313,71 @@ class KankeiEngine:
         with open(path, "w", encoding="utf-8") as f:
             for stmt in self.graph.export_cypher_batch():
                 f.write(stmt + "\n")
+
+
+# ----------------------------------------------------------------------------------
+# One-call setup for the demo / cloud server
+# ----------------------------------------------------------------------------------
+ROOT = os.path.dirname(os.path.abspath(__file__))
+MODEL_ENV = "KANKEI_MODEL"            # path to the .gguf, overrides the default search
+GPU_LAYERS_ENV = "KANKEI_GPU_LAYERS"  # layers on the GPU; -1 = all (needs a CUDA build of llama-cpp-python)
+DEFAULT_MODEL_GLOBS = (
+    "model/gemma-4-E2B-it-Q4_0.gguf", "model/*/gemma-4-E2B-it-Q4_0.gguf",   # preferred (see docs)
+    "model/gemma-4*.gguf", "model/*/gemma-4*.gguf",
+)
+
+
+def find_default_model() -> Optional[str]:
+    """The Gemma 4 file the demo should use: $KANKEI_MODEL, else the newest-quality match in ./model."""
+    env = os.environ.get(MODEL_ENV)
+    if env:
+        return env
+    for pattern in DEFAULT_MODEL_GLOBS:
+        for path in sorted(glob.glob(os.path.join(ROOT, pattern))):
+            if os.path.getsize(path) > 500_000_000:  # skip truncated downloads
+                return path
+    return None
+
+
+def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] = None,
+                  n_threads: Optional[int] = None, cache_mb: int = 512, n_ctx: int = 2048,
+                  llm: Optional[LLMBackend] = None, warm_up: bool = False,
+                  **engine_kwargs) -> "KankeiEngine":
+    """Build a ready-to-use engine with the configuration measured best for Gemma 4:
+
+    two few-shot examples drawn from 5 fixed sets per mood (the prompt prefix repeats, so the
+    prompt cache skips it), temperature 0.5 / top_p 0.9 / top_k 40, price stated explicitly.
+
+        engine = create_engine()                       # finds the model, CPU
+        engine = create_engine(n_gpu_layers=-1)        # cloud GPU
+        reply = engine.process_action("NPC_1", "Hey Marta, how much for a potion?")["response"]
+
+    `warm_up=True` reads every prompt prefix once at startup (about a minute on CPU, seconds on a
+    GPU) so the first players do not pay for filling the cache; recommended for the server.
+
+    Pass `llm=` to inject any backend (tests use StubBackend). Extra keyword arguments go to
+    KankeiEngine (e.g. connect_neo4j=True). Raises instead of silently falling back to canned
+    lines, so a wrong path is noticed before the demo.
+    """
+    if llm is None:
+        path = model_path or find_default_model()
+        if not path:
+            raise FileNotFoundError(
+                f"No Gemma 4 model found. Put a .gguf in ./model, pass model_path=, or set ${MODEL_ENV}.")
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"Model file not found: {path}")
+        if n_gpu_layers is None:
+            n_gpu_layers = int(os.environ.get(GPU_LAYERS_ENV, "0"))
+        llm = LlamaCppBackend(path, n_ctx=n_ctx, n_threads=n_threads, n_gpu_layers=n_gpu_layers,
+                              temperature=0.5, top_p=0.9, top_k=40, prompt_cache_mb=cache_mb)
+        llm.shots = 2
+        set_example_variants(5)
+    engine = KankeiEngine(llm=llm, **engine_kwargs)
+    engine.initialize_modules()
+    engine.running = True
+    if warm_up:
+        engine.warm_up()
+    return engine
 
 
 def main():
