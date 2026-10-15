@@ -36,3 +36,5 @@ Because the model only phrases facts that the engine has already selected, promp
 
 - **Fine-Tuning:** Training or fine-tuning models directly on AMD GPUs via ROCm (detailed plan in [finetune_compact.md](finetune_compact.md)).
 - **Hardware Benchmarks:** Conducting isolated hardware latency benchmarks for the model itself (current figures reflect end-to-end latency across the shared free endpoint).
+
+Measured numbers and how to reproduce them: [evaluation.md](evaluation.md).

@@ -1,0 +1,559 @@
+{
+ "label": "concurrent-4",
+ "model": "Gemma-4-31B-IT",
+ "calls": 30,
+ "workers": 4,
+ "wall_seconds": 170.0,
+ "throughput_per_min": 10.6,
+ "errors": 0,
+ "error_rate": 0.0,
+ "http_attempts": 36,
+ "extra_attempts_from_retries": 6,
+ "end_to_end": {
+  "median_s": 12.99,
+  "p95_s": 67.71,
+  "mean_s": 22.66,
+  "max_s": 86.9,
+  "n": 30
+ },
+ "network_per_attempt": {
+  "median_s": 7.57,
+  "p95_s": 30.54,
+  "mean_s": 13.19,
+  "max_s": 31.8,
+  "n": 36
+ },
+ "checks_passed": {
+  "facts": [
+   30,
+   30
+  ],
+  "no_copy": [
+   30,
+   30
+  ],
+  "no_leak": [
+   30,
+   30
+  ],
+  "no_meta": [
+   30,
+   30
+  ],
+  "non_empty": [
+   30,
+   30
+  ],
+  "short": [
+   30,
+   30
+  ],
+  "tone": [
+   28,
+   30
+  ]
+ },
+ "error_samples": [],
+ "results": [
+  {
+   "npc": "NPC_1",
+   "mood": "neutral",
+   "action": "buy a potion from me",
+   "seconds": 4.411176681518555,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true
+   },
+   "reply": "I have a potion available. It will cost you 25 coins."
+  },
+  {
+   "npc": "NPC_1",
+   "mood": "friendly",
+   "action": "buy a potion from me",
+   "seconds": 6.425366163253784,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "Welcome to my stall! I have a potion right here for 25 coins."
+  },
+  {
+   "npc": "NPC_1",
+   "mood": "hostile",
+   "action": "buy a potion from me",
+   "seconds": 8.140726327896118,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "Hurry up and pay the twenty-five coins. Touch anything else and I'll break your fingers."
+  },
+  {
+   "npc": "NPC_2",
+   "mood": "neutral",
+   "action": "buy a sword",
+   "seconds": 30.082605600357056,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true
+   },
+   "reply": "I have a sword for sale. It will cost you 100 coins."
+  },
+  {
+   "npc": "NPC_2",
+   "mood": "hostile",
+   "action": "attack the NPC",
+   "seconds": 25.820809364318848,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "You've picked the wrong night to start a fight. I'll break your ribs right here in the dirt!"
+  },
+  {
+   "npc": "NPC_0",
+   "mood": "friendly",
+   "action": "greet the NPC",
+   "seconds": 23.69191074371338,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "Welcome back! It's been too long since you last graced my tavern."
+  },
+  {
+   "npc": "NPC_0",
+   "mood": "neutral",
+   "action": "greet the NPC",
+   "seconds": 21.848034858703613,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true
+   },
+   "reply": "Welcome back. What can I get for you?"
+  },
+  {
+   "npc": "NPC_0",
+   "mood": "hostile",
+   "action": "greet the NPC",
+   "seconds": 3.91756534576416,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "Still crawling back here, are you? Get out before I throw you out."
+  },
+  {
+   "npc": "NPC_0",
+   "mood": "friendly",
+   "action": "help the NPC",
+   "seconds": 29.74977159500122,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "That is kind of you, old friend! I could certainly use a hand around here."
+  },
+  {
+   "npc": "NPC_0",
+   "mood": "hostile",
+   "action": "attack the NPC",
+   "seconds": 33.71394610404968,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "You've lost your mind, you pathetic worm! I'll break your neck before you touch another glass!"
+  },
+  {
+   "npc": "NPC_3",
+   "mood": "friendly",
+   "action": "ask about the quest",
+   "seconds": 30.076451539993286,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "I'm listening, dear. How can I help you today?"
+  },
+  {
+   "npc": "NPC_3",
+   "mood": "neutral",
+   "action": "ask about the quest",
+   "seconds": 26.056937217712402,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true
+   },
+   "reply": "I am listening. State your business."
+  },
+  {
+   "npc": "NPC_4",
+   "mood": "hostile",
+   "action": "attack the NPC",
+   "seconds": 5.2917866706848145,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "You dare strike me in a tavern? I'll forge your head into a doorstop!"
+  },
+  {
+   "npc": "NPC_4",
+   "mood": "friendly",
+   "action": "greet the NPC",
+   "seconds": 10.16025424003601,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "Welcome to the forge! Come in and warm yourself by the fire."
+  },
+  {
+   "npc": "NPC_1",
+   "mood": "neutral",
+   "action": "ask about the quest",
+   "seconds": 10.729407548904419,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true
+   },
+   "reply": "Speak quickly. I have goods to sell and little time to waste."
+  },
+  {
+   "npc": "NPC_1",
+   "mood": "neutral",
+   "action": "buy a potion from me",
+   "seconds": 13.031656980514526,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true
+   },
+   "reply": "I have potions available. They are 25 coins each."
+  },
+  {
+   "npc": "NPC_1",
+   "mood": "friendly",
+   "action": "buy a potion from me",
+   "seconds": 12.077922344207764,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "Welcome to my stall! This potion will be 25 coins."
+  },
+  {
+   "npc": "NPC_1",
+   "mood": "hostile",
+   "action": "buy a potion from me",
+   "seconds": 12.946004867553711,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "Hand over twenty-five coins or get out of my sight. Don't make me throw you out of the market."
+  },
+  {
+   "npc": "NPC_2",
+   "mood": "neutral",
+   "action": "buy a sword",
+   "seconds": 12.037437200546265,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true
+   },
+   "reply": "I have a sword for sale. It will cost you 100 coins."
+  },
+  {
+   "npc": "NPC_2",
+   "mood": "hostile",
+   "action": "attack the NPC",
+   "seconds": 10.861919641494751,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": false
+   },
+   "reply": "You've just signed your death warrant. I'll enjoy breaking your ribs right here in the tavern!"
+  },
+  {
+   "npc": "NPC_0",
+   "mood": "friendly",
+   "action": "greet the NPC",
+   "seconds": 10.411674499511719,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "Good to see you again! What can I pour for an old friend?"
+  },
+  {
+   "npc": "NPC_0",
+   "mood": "neutral",
+   "action": "greet the NPC",
+   "seconds": 86.9049723148346,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true
+   },
+   "reply": "Welcome back. What can I get for you today?"
+  },
+  {
+   "npc": "NPC_0",
+   "mood": "hostile",
+   "action": "greet the NPC",
+   "seconds": 67.70590162277222,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "Still haunting my tavern, you pathetic worm? Get out before I throw you out."
+  },
+  {
+   "npc": "NPC_0",
+   "mood": "friendly",
+   "action": "help the NPC",
+   "seconds": 63.36049199104309,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "That's very kind of you. It's good to have a trusted friend around the tavern!"
+  },
+  {
+   "npc": "NPC_0",
+   "mood": "hostile",
+   "action": "attack the NPC",
+   "seconds": 63.83008527755737,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "I should have thrown you out the first time we met. You'll bleed all over my floor, you pathetic worm!"
+  },
+  {
+   "npc": "NPC_3",
+   "mood": "friendly",
+   "action": "ask about the quest",
+   "seconds": 3.900486946105957,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "I'm here to help. What is it you wish to ask?"
+  },
+  {
+   "npc": "NPC_3",
+   "mood": "neutral",
+   "action": "ask about the quest",
+   "seconds": 6.078228235244751,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true
+   },
+   "reply": "I am Elena. How can I help you?"
+  },
+  {
+   "npc": "NPC_4",
+   "mood": "hostile",
+   "action": "attack the NPC",
+   "seconds": 18.414769411087036,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": false
+   },
+   "reply": "You've picked the wrong man to strike. I'll forge your coffin with my own hands."
+  },
+  {
+   "npc": "NPC_4",
+   "mood": "friendly",
+   "action": "greet the NPC",
+   "seconds": 15.293790340423584,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true,
+    "tone": true
+   },
+   "reply": "Welcome to the forge! Come in and warm yourself by the fire."
+  },
+  {
+   "npc": "NPC_1",
+   "mood": "neutral",
+   "action": "ask about the quest",
+   "seconds": 12.805275440216064,
+   "error": null,
+   "checks": {
+    "non_empty": true,
+    "short": true,
+    "no_meta": true,
+    "no_copy": true,
+    "no_leak": true,
+    "facts": true
+   },
+   "reply": "I am listening. What is it you wish to buy?"
+  }
+ ]
+}

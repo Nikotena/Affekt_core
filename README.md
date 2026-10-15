@@ -18,6 +18,7 @@ AMD GPUs through AMD Token Factory.
 - **Free-text understanding**: a rule-based parser reads the player's intent, tone, offered price and item;
   an optional model resolves ambiguous lines.
 - **Graceful fallback**: if the model is unreachable, NPCs answer with deterministic lines for their mood.
+- **Fact guard**: a price in the model's reply that differs from the engine's is replaced before the player sees it.
 - **Standard library only** for the engine, the tests and the AMD API client.
 
 ## Architecture
@@ -25,6 +26,9 @@ AMD GPUs through AMD Token Factory.
 ![Affekt Core architecture](docs/architecture.svg)
 
 How the AMD-hosted model is used, and what was and was not measured: [docs/amd.md](docs/amd.md).
+
+Measurements (latency, error rate, fact checks, parser accuracy with confidence intervals), their limits and
+what is still missing: [docs/evaluation.md](docs/evaluation.md).
 
 ## Try it
 
@@ -84,6 +88,7 @@ print(r["response"], r["intent"], r["mood"])
 | `intent`, `offer`, `addressed` | What the parser understood, a price offered, and the NPC name the player used |
 | `llm_used` | Whether the model phrased the line or a deterministic line was used |
 | `payload` | The exact facts the model was given |
+| `price_guard` | What the price guard did: `ok` (checked, left as is), `corrected`, `blocked`, or `not_checked` (no model was used) |
 | `memory_event`, `graph_nodes`, `graph_edges` | Memory stored and graph neighbourhood used |
 
 ### Options
@@ -114,6 +119,7 @@ raised intent accuracy on 50 held-out lines from 54% to 64%.
 | Command | What it does |
 |---|---|
 | `python -m unittest discover -s test` | Unit tests (no network, no model) |
+| `python test\check_guard.py rows.jsonl` | Runs the price guard over saved replies |
 | `python test\basic_tests.py` | Wiring checks plus a 20-action simulation with metrics |
 | `python test\eval_intent.py --set all` | Intent accuracy of the rules on 179 test lines |
 | `python test\eval_labeled.py [--llm] [--reserve]` | Accuracy on 200 hand-labelled lines (150 for tuning, 50 held out) |

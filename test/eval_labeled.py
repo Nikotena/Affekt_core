@@ -48,6 +48,16 @@ def llm_intents(rows, workers=6):
         return [p.intent for p in pool.map(lambda r: refine(parse(r["text"]), backend), rows)]
 
 
+def wilson(right, n, z=1.96):
+    """95% Wilson confidence interval for a proportion, as (low, high)."""
+    if not n:
+        return 0.0, 0.0
+    p = right / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / (1 + z * z / n)
+    return centre - half, centre + half
+
+
 def score(rows, show=False, intents=None):
     right, conf = 0, Counter()
     for i, r in enumerate(rows):
@@ -76,9 +86,18 @@ def main():
     right, n, conf = score(rows, show=a.errors and not a.reserve)
     print(f"{name}: rules only      {right}/{n} ({100 * right / n:.0f}%)")
     if a.llm:
+        rules_right = right
         asked = sum(parse(r["text"]).intent == "other" for r in rows)
-        right, n, conf = score(rows, show=a.errors and not a.reserve, intents=llm_intents(rows))
+        with_model = llm_intents(rows)
+        right, n, conf = score(rows, show=a.errors and not a.reserve, intents=with_model)
         print(f"{name}: rules + model   {right}/{n} ({100 * right / n:.0f}%)  [{asked} model calls]")
+        # paired view: which individual lines the model fixed or broke (never prints the text)
+        fixed = sum(1 for r, m in zip(rows, with_model) if m == r["intent"] and parse(r["text"]).intent != r["intent"])
+        broke = sum(1 for r, m in zip(rows, with_model) if m != r["intent"] and parse(r["text"]).intent == r["intent"])
+        lo0, hi0 = wilson(rules_right, n)
+        lo1, hi1 = wilson(right, n)
+        print(f"{name}: 95% interval    rules {100 * lo0:.0f}-{100 * hi0:.0f}%   rules + model {100 * lo1:.0f}-{100 * hi1:.0f}%")
+        print(f"{name}: model fixed {fixed} lines and broke {broke} (net {fixed - broke:+d} of {n})")
     if not a.reserve:
         print("confusions:", ", ".join(f"{w}->{g} x{c}" for (w, g), c in conf.most_common(8)))
 

@@ -14,6 +14,7 @@ from modules.VectorialPersonality import (CHOLERIC, MELANCHOLIC, NORMAL, PHLEGMA
 from modules.MemorySet import MemorySet
 from modules.ContextFunction import ContextFunction
 from modules.GraphDatabase import GraphDatabase
+from modules.FactGuard import guard_price
 from modules.IntentLLM import refine as refine_intent
 from modules.IntentParser import IntentParser, is_commerce
 from modules.LLMLayer import (LLMBackend, LlamaCppBackend, StubBackend, FALLBACK_LINES, style_for,
@@ -39,6 +40,7 @@ class AffektEngine:
         self.parser = IntentParser()
         self._last_reply: Dict[str, str] = {}
         self.warm_up_stats: Optional[Dict[str, float]] = None
+        self.last_guard = "not_checked"  # what the fact guard did to the latest reply
         self.memory = MemorySet()
         self.context = ContextFunction()
         # Passive persistence layer (in-memory primary graph + optional Neo4j)
@@ -234,6 +236,7 @@ class AffektEngine:
             "addressed": parsed.addressed,
             "triggered": triggered,
             "llm_used": use_llm,
+            "price_guard": self.last_guard,
             "payload": payload,
             "payload_size": len(payload),
             "graph_nodes": len(subgraph["nodes"]),
@@ -280,15 +283,25 @@ class AffektEngine:
 
     def _generate_response(self, payload: List[str], npc_id: str, action: str,
                            use_llm: bool, mood: str) -> str:
-        """LLM phrasing for important moments; deterministic line otherwise or on failure."""
+        """LLM phrasing for important moments; deterministic line otherwise or on failure.
+
+        The reply is checked against the engine's prices (modules/FactGuard.py) before it is used.
+        """
+        fallback = FALLBACK_LINES.get(mood, FALLBACK_LINES["neutral"])
+        self.last_guard = "not_checked"
         if use_llm:
             try:
                 text = self.llm.generate(payload, action)
                 if text:
-                    return text
+                    checked = guard_price(text, payload, action, fallback)
+                    self.last_guard = checked.status
+                    if checked.status != "ok":
+                        print(f"[Engine] {npc_id}: reply stated {list(checked.stated)} coins, "
+                              f"engine says {list(checked.expected)}; {checked.status}")
+                    return checked.text
             except Exception as e:
                 print(f"[Engine] LLM failed for {npc_id}: {e}")
-        return FALLBACK_LINES.get(mood, FALLBACK_LINES["neutral"])
+        return fallback
 
     def run(self, num_actions: int) -> List[Dict]:
         """Run the engine for a given number of actions"""
