@@ -1,11 +1,10 @@
 # How Affekt Core uses AMD hardware
 
-## Short version (for the submission form)
 
 Affekt Core is a narrative engine that gives game NPCs emotion, memory and context. Plain code
 decides what each NPC feels, remembers and knows, and a language model only phrases the final
-line. That language model is **Gemma-4-31B-IT, served on AMD GPUs through AMD Token Factory
-(AMD Radeon Cloud)**. The engine calls it through an OpenAI-compatible API to speak every NPC
+line. That language model is **Gemma-4-31B-IT, served on AMD GPUs through AMD Token Factory**. 
+The engine calls it through an OpenAI-compatible API to speak every NPC
 line, to read player messages the rule-based parser cannot classify (it raised intent accuracy on
 held-out lines from 54% to 64%), and to write the example dialogue for a future fine-tune of a
 small local model. Because the model only phrases facts that the engine already chose, prompts
@@ -28,7 +27,7 @@ shared cloud endpoint a good fit for it.
 - Facts such as prices come from the engine and are put in the prompt ("Say the price: 25
   coins."), so the model's job is wording, not remembering.
 - The client is a small standard-library wrapper around the chat-completions endpoint
-  (`modules/OpenRouterBackend.py`), so no extra dependencies are needed to run on AMD Token Factory.
+  (`modules/ApiBackend.py`), so no extra dependencies are needed to run on AMD Token Factory.
 
 **What we measured on the free tier** (shared team key)
 - Replies took from a few seconds to under a minute depending on load; in one rehearsal 2 of 14

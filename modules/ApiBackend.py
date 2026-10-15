@@ -1,9 +1,16 @@
 """
-OpenRouter backend (teacher for dataset generation).
+Hosted-model backends over an OpenAI-compatible chat-completions API.
 
-Same interface as LlamaCppBackend, so the dataset generator can swap teachers. Uses only
-the standard library. The API key is read from the OPENROUTER_API_KEY environment
-variable or the project's .env file and is never printed, stored or put in a row.
+ChatAPIBackend holds the shared code (HTTP, retries, rate limiting, key loading). Two concrete
+backends configure it:
+
+    AMDBackend         Gemma-4-31B-IT on AMD GPUs through AMD Token Factory (key AMD_API_KEY)
+    OpenRouterBackend  models on OpenRouter, used as a teacher for dataset generation
+                       (key OPENROUTER_API_KEY)
+
+Same interface as LlamaCppBackend, so engine and dataset generator can swap models. Uses only the
+standard library. Keys are read from the environment or the project's .env file and are never
+printed, stored or put in a dataset row.
 """
 
 import json
@@ -16,20 +23,20 @@ from typing import Callable, Dict, List, Optional
 
 from modules.LLMLayer import LLMBackend, build_messages, clean_output
 
-ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
+OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-KEY_NAME = "OPENROUTER_API_KEY"
+OPENROUTER_KEY_NAME = "OPENROUTER_API_KEY"
 
 
-class OpenRouterError(RuntimeError):
+class APIError(RuntimeError):
     pass
 
 
-def load_key(env_file: Optional[str] = None, key_name: str = KEY_NAME) -> str:
+def load_key(env_file: Optional[str] = None, key_name: str = OPENROUTER_KEY_NAME) -> str:
     """API key from the environment, else from the project's .env file ('' if neither).
 
     Only `key_name` is read from .env; nothing else is exported and the value is never logged.
@@ -52,18 +59,19 @@ def load_key(env_file: Optional[str] = None, key_name: str = KEY_NAME) -> str:
     return ""
 
 
-class OpenRouterBackend(LLMBackend):
-    endpoint = ENDPOINT
-    key_name = KEY_NAME
-    title = "Affekt Core dataset generation"
+class ChatAPIBackend(LLMBackend):
+    """Shared client. Subclasses set `endpoint`, `key_name` and `title`."""
+    endpoint = ""
+    key_name = ""
+    title = "Affekt Core"
 
-    def __init__(self, model: str = DEFAULT_MODEL, api_key: Optional[str] = None,
+    def __init__(self, model: str, api_key: Optional[str] = None,
                  temperature: float = 0.7, max_tokens: int = 160, min_interval: float = 3.0,
-                 retries: int = 6, disable_reasoning: bool = True, timeout: float = 120.0,
+                 retries: int = 6, disable_reasoning: bool = False, timeout: float = 120.0,
                  opener: Optional[Callable] = None, sleep: Callable[[float], None] = time.sleep):
         self._key = api_key or load_key(key_name=self.key_name)
         if not self._key:
-            raise OpenRouterError(f"{self.key_name} not found: set it in the environment or in .env")
+            raise APIError(f"{self.key_name} not found: set it in the environment or in .env")
         self.model = model
         self.name = model
         self.temperature = temperature
@@ -101,14 +109,14 @@ class OpenRouterBackend(LLMBackend):
                     self._sleep(float(retry_after) if retry_after and retry_after.isdigit() else delay)
                     delay = min(delay * 2, 60)
                     continue
-                raise OpenRouterError(f"HTTP {e.code}: {self._error_text(e)}") from None
+                raise APIError(f"HTTP {e.code}: {self._error_text(e)}") from None
             except (urllib.error.URLError, TimeoutError) as e:
                 if attempt < self.retries:
                     self._sleep(delay)
                     delay = min(delay * 2, 60)
                     continue
-                raise OpenRouterError(f"network error: {e}") from None
-        raise OpenRouterError("retries exhausted")
+                raise APIError(f"network error: {e}") from None
+        raise APIError("retries exhausted")
 
     def _wait_for_slot(self) -> None:
         """Reserve the next request start time, at least `min_interval` after the previous one.
@@ -147,7 +155,7 @@ class OpenRouterBackend(LLMBackend):
             body["reasoning"] = {"enabled": False}
         try:
             data = self._post(body)
-        except OpenRouterError as e:
+        except APIError as e:
             # Some models reject the reasoning field; retry once without it.
             if self.disable_reasoning and str(e).startswith("HTTP 400"):
                 body.pop("reasoning")
@@ -157,8 +165,18 @@ class OpenRouterBackend(LLMBackend):
         try:
             text = data["choices"][0]["message"].get("content") or ""
         except (KeyError, IndexError, TypeError):
-            raise OpenRouterError(f"unexpected response: {str(data)[:200]}") from None
+            raise APIError(f"unexpected response: {str(data)[:200]}") from None
         return text
+
+
+class OpenRouterBackend(ChatAPIBackend):
+    """OpenRouter models. Used as a dataset teacher; asks the model not to spend tokens on reasoning."""
+    endpoint = OPENROUTER_ENDPOINT
+    key_name = OPENROUTER_KEY_NAME
+    title = "Affekt Core dataset generation"
+
+    def __init__(self, model: str = OPENROUTER_DEFAULT_MODEL, disable_reasoning: bool = True, **kw):
+        super().__init__(model, disable_reasoning=disable_reasoning, **kw)
 
 
 # -- AMD Token Factory (AMD Radeon Cloud, OpenAI-compatible, free shared endpoints) ----------
@@ -167,10 +185,10 @@ AMD_DEFAULT_MODEL = "Gemma-4-31B-IT"
 AMD_KEY_NAME = "AMD_API_KEY"
 
 
-class AMDBackend(OpenRouterBackend):
+class AMDBackend(ChatAPIBackend):
     """Gemma-4-31B-IT (or any catalog model) served on AMD GPUs by Token Factory.
 
-    Same chat-completions protocol. Differences from OpenRouter: the gateway rejects the
+    Same chat-completions protocol as OpenRouter. Differences: the gateway rejects the
     `reasoning` object with HTTP 400 (Gemma does not think by default, so nothing is sent), and
     the free tier allows ~20 requests/minute per account, hence the 3.2 s default spacing.
     429s honour Retry-After through the inherited retry loop. The key is shared by the whole team.
@@ -179,6 +197,5 @@ class AMDBackend(OpenRouterBackend):
     key_name = AMD_KEY_NAME
     title = "Affekt Core"
 
-    def __init__(self, model: str = AMD_DEFAULT_MODEL, min_interval: float = 3.2,
-                 disable_reasoning: bool = False, **kw):
-        super().__init__(model, min_interval=min_interval, disable_reasoning=disable_reasoning, **kw)
+    def __init__(self, model: str = AMD_DEFAULT_MODEL, min_interval: float = 3.2, **kw):
+        super().__init__(model, min_interval=min_interval, **kw)

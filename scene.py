@@ -13,7 +13,7 @@ import time
 
 from AffektEngine import create_engine
 from modules.LLMLayer import StubBackend
-from modules.OpenRouterBackend import AMD_KEY_NAME, load_key
+from modules.ApiBackend import AMD_KEY_NAME, load_key
 
 # (npc_id, what the player says, what to point out)
 SCRIPT = [

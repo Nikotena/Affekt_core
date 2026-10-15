@@ -1,4 +1,4 @@
-"""OpenRouter backend tests with a fake HTTP layer (no network, no real key)."""
+"""API backend tests (AMD Token Factory and OpenRouter) with a fake HTTP layer: no network, no real key."""
 import argparse
 import io
 import json
@@ -12,8 +12,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "test"))
 
-import modules.OpenRouterBackend as orb
-from modules.OpenRouterBackend import DEFAULT_MODEL, OpenRouterBackend, OpenRouterError, load_key
+import modules.ApiBackend as orb
+from modules.ApiBackend import OPENROUTER_DEFAULT_MODEL, OpenRouterBackend, APIError, load_key
 from training.generate_dataset import make_teacher
 
 PAYLOAD = ["World: Tavern", "NPC: Oswin", "You are Oswin, the Blacksmith.",
@@ -66,7 +66,7 @@ class OpenRouterTests(unittest.TestCase):
         self.assertEqual(req.full_url, "https://openrouter.ai/api/v1/chat/completions")
         self.assertEqual(req.get_header("Authorization"), f"Bearer {KEY}")
         body = json.loads(req.data)
-        self.assertEqual(body["model"], DEFAULT_MODEL)
+        self.assertEqual(body["model"], OPENROUTER_DEFAULT_MODEL)
         self.assertEqual(body["reasoning"], {"enabled": False})
         roles = [m["role"] for m in body["messages"]]
         self.assertEqual(roles[0], "system")
@@ -79,7 +79,7 @@ class OpenRouterTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as empty:
                 orb.ROOT = empty  # no .env here, whatever the real project has
-                with self.assertRaises(OpenRouterError):
+                with self.assertRaises(APIError):
                     OpenRouterBackend()
         finally:
             orb.ROOT = old_root
@@ -102,14 +102,14 @@ class OpenRouterTests(unittest.TestCase):
     def test_gives_up_after_retries(self):
         net = FakeNet(*[http_error(429)] * 3)
         b, _ = backend(net, retries=2)
-        with self.assertRaises(OpenRouterError):
+        with self.assertRaises(APIError):
             b.generate(PAYLOAD, "greet the NPC")
         self.assertEqual(len(net.requests), 3)
 
     def test_auth_errors_are_not_retried(self):
         net = FakeNet(http_error(401))
         b, sleeps = backend(net)
-        with self.assertRaisesRegex(OpenRouterError, "HTTP 401"):
+        with self.assertRaisesRegex(APIError, "HTTP 401"):
             b.generate(PAYLOAD, "greet the NPC")
         self.assertEqual((len(net.requests), sleeps), (1, []))
 
@@ -181,7 +181,7 @@ class TeacherSelectionTests(unittest.TestCase):
     def test_default_model_and_label(self):
         os.environ["OPENROUTER_API_KEY"] = KEY
         teacher, label = make_teacher(self.args(teacher_license="see model card"))
-        self.assertEqual(label, DEFAULT_MODEL)
+        self.assertEqual(label, OPENROUTER_DEFAULT_MODEL)
         self.assertNotIn(KEY, repr(teacher))
 
 

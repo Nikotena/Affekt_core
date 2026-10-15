@@ -70,7 +70,7 @@ class FactoryTests(unittest.TestCase):
                 ke.create_engine(use_amd_api=False)
 
     def test_api_is_chosen_automatically_only_with_a_key(self):
-        from modules.OpenRouterBackend import AMDBackend
+        from modules.ApiBackend import AMDBackend
         with mock.patch.dict(os.environ, {"AMD_API_KEY": "rc-test"}):
             e = ke.create_engine()
             self.assertIsInstance(e.llm, AMDBackend)

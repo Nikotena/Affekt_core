@@ -11,7 +11,7 @@ import sys
 
 from AffektEngine import create_engine
 from modules.LLMLayer import StubBackend
-from modules.OpenRouterBackend import AMD_KEY_NAME, load_key
+from modules.ApiBackend import AMD_KEY_NAME, load_key
 
 
 def main():

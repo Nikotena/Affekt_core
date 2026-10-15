@@ -84,11 +84,11 @@ def append_jsonl(path, row, retries=5):
 def make_teacher(args):
     """Build the teacher backend. Returns (backend, label recorded in every row)."""
     if args.teacher in ("openrouter", "amd"):
-        from modules.OpenRouterBackend import AMD_DEFAULT_MODEL, AMDBackend, DEFAULT_MODEL, OpenRouterBackend
+        from modules.ApiBackend import AMD_DEFAULT_MODEL, AMDBackend, OPENROUTER_DEFAULT_MODEL, OpenRouterBackend
         if not args.teacher_license:
             sys.exit(f"--teacher-license is required with --teacher {args.teacher}: write down the "
                      "license/terms that allow training on this model's outputs (check its model card).")
-        cls, default = (AMDBackend, AMD_DEFAULT_MODEL) if args.teacher == "amd" else (OpenRouterBackend, DEFAULT_MODEL)
+        cls, default = (AMDBackend, AMD_DEFAULT_MODEL) if args.teacher == "amd" else (OpenRouterBackend, OPENROUTER_DEFAULT_MODEL)
         model = args.model or default
         kw = {k: v for k, v in (("min_interval", args.min_interval), ("timeout", getattr(args, "timeout", None)))
               if v is not None}

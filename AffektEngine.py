@@ -380,10 +380,10 @@ def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] 
     lines, so a wrong path is noticed before the demo.
     """
     if llm is None and use_amd_api is None and model_path is None:
-        from modules.OpenRouterBackend import AMD_KEY_NAME, load_key
+        from modules.ApiBackend import AMD_KEY_NAME, load_key
         use_amd_api = bool(load_key(key_name=AMD_KEY_NAME))
     if llm is None and use_amd_api:
-        from modules.OpenRouterBackend import AMDBackend
+        from modules.ApiBackend import AMDBackend
         llm = AMDBackend(temperature=0.5, timeout=30.0, retries=2)
         llm.shots = 2
         set_example_variants(5)
@@ -405,7 +405,7 @@ def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] 
         if hasattr(llm, "complete"):
             intent_llm = llm
         else:
-            from modules.OpenRouterBackend import AMDBackend
+            from modules.ApiBackend import AMDBackend
             intent_llm = AMDBackend(temperature=0.0, timeout=30.0, retries=2)
     engine = AffektEngine(llm=llm, intent_llm=intent_llm, **engine_kwargs)
     engine.initialize_modules()

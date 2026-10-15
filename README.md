@@ -147,7 +147,7 @@ modules/
   IntentParser.py           rule-based reading of player text
   IntentLLM.py              optional model fallback for ambiguous lines
   LLMLayer.py               prompts and model backends
-  OpenRouterBackend.py      AMD Token Factory (AMDBackend) and OpenRouter clients
+  ApiBackend.py             hosted-model clients: AMD Token Factory (AMDBackend), OpenRouter
 test/                  unit tests, benchmarks and labelled data
 training/              dataset tools for a future fine-tune of a small local model
 ```

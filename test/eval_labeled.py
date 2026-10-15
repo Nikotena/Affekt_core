@@ -42,7 +42,7 @@ def llm_intents(rows, workers=6):
     """Intent per row after the model resolves the parser's "other" answers (one call each)."""
     from concurrent.futures import ThreadPoolExecutor
     from modules.IntentLLM import refine
-    from modules.OpenRouterBackend import AMDBackend
+    from modules.ApiBackend import AMDBackend
     backend = AMDBackend(temperature=0.0, timeout=60.0)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         return [p.intent for p in pool.map(lambda r: refine(parse(r["text"]), backend), rows)]

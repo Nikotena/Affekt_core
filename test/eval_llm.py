@@ -116,7 +116,7 @@ def main():
     if args.variants:
         set_example_variants(args.variants)
     if args.amd:
-        from modules.OpenRouterBackend import AMDBackend
+        from modules.ApiBackend import AMDBackend
         backend = AMDBackend(args.amd, temperature=args.temperature)
     else:
         backend = StubBackend() if args.stub else LlamaCppBackend(
