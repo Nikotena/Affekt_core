@@ -1,0 +1,142 @@
+[
+ {
+  "npc": "NPC_1",
+  "name": "Marta",
+  "role": "Merchant",
+  "line": "Hey Marta, how much for a healing potion?",
+  "note": "The engine knows what Marta sells and at what price; the model only phrases it.",
+  "mood": "neutral",
+  "intent": "ask",
+  "response": "The potion is twenty-five coins. Do you wish to purchase it?"
+ },
+ {
+  "npc": "NPC_1",
+  "name": "Marta",
+  "role": "Merchant",
+  "line": "That's too expensive. I'll give you 5 coins.",
+  "note": "A price offer is read as haggling.",
+  "mood": "neutral",
+  "intent": "haggle",
+  "response": "That is not enough. The price is 25 coins."
+ },
+ {
+  "npc": "NPC_0",
+  "name": "Alan",
+  "role": "Bartender",
+  "line": "This ale tastes like dirt, you idiot!",
+  "note": "Alan is easy-going: the insult barely moves him.",
+  "mood": "neutral",
+  "intent": "insult",
+  "response": "We have known each other too long for this. Keep it civil or leave my tavern."
+ },
+ {
+  "npc": "NPC_4",
+  "name": "Kael",
+  "role": "Blacksmith",
+  "line": "This sword is garbage, you idiot!",
+  "note": "Same insult, but Kael the blacksmith is choleric: he turns hostile.",
+  "mood": "hostile",
+  "intent": "insult",
+  "response": "Keep talking, worm. I'll forge a collar just for your neck."
+ },
+ {
+  "npc": "NPC_4",
+  "name": "Kael",
+  "role": "Blacksmith",
+  "line": "Sorry, I didn't mean it. You're amazing!",
+  "note": "Kael holds a grudge: one kind word does not fix it.",
+  "mood": "hostile",
+  "intent": "compliment",
+  "response": "Save your breath, you pathetic waste of space. I don't need praise from a maggot like you."
+ },
+ {
+  "npc": "NPC_4",
+  "name": "Kael",
+  "role": "Blacksmith",
+  "line": "Thank you, really. Could you repair my sword?",
+  "note": "A few more kind turns and his mood recovers.",
+  "mood": "neutral",
+  "intent": "compliment",
+  "response": "I appreciate the words. Now, do you have gear that needs mending?"
+ },
+ {
+  "npc": "NPC_2",
+  "name": "Guard",
+  "role": "Guard",
+  "line": "Hello.",
+  "note": "Now greeting the guard, over and over...",
+  "mood": "neutral",
+  "intent": "greet",
+  "response": "Greetings. Keep the peace while you are in the tavern."
+ },
+ {
+  "npc": "NPC_2",
+  "name": "Guard",
+  "role": "Guard",
+  "line": "Hello.",
+  "note": "...",
+  "mood": "friendly",
+  "intent": "greet",
+  "response": "Hello. Enjoy your stay at the tavern."
+ },
+ {
+  "npc": "NPC_2",
+  "name": "Guard",
+  "role": "Guard",
+  "line": "Hello.",
+  "note": "...",
+  "mood": "friendly",
+  "intent": "greet",
+  "response": "Good evening. Enjoy your stay at the tavern."
+ },
+ {
+  "npc": "NPC_2",
+  "name": "Guard",
+  "role": "Guard",
+  "line": "Hello.",
+  "note": "...",
+  "mood": "friendly",
+  "intent": "greet",
+  "response": "Greetings. Enjoy your stay at the tavern."
+ },
+ {
+  "npc": "NPC_2",
+  "name": "Guard",
+  "role": "Guard",
+  "line": "Hello.",
+  "note": "...",
+  "mood": "friendly",
+  "intent": "greet",
+  "response": "Hello there. Enjoy your stay at the tavern."
+ },
+ {
+  "npc": "NPC_2",
+  "name": "Guard",
+  "role": "Guard",
+  "line": "Hello.",
+  "note": "...",
+  "mood": "friendly",
+  "intent": "greet",
+  "response": "Greetings. Enjoy your stay at the tavern."
+ },
+ {
+  "npc": "NPC_2",
+  "name": "Guard",
+  "role": "Guard",
+  "line": "Hello.",
+  "note": "The seventh hello: the guard gets nervous, with good reason.",
+  "mood": "tense",
+  "intent": "greet",
+  "response": "Who's asking? Keep your distance."
+ },
+ {
+  "npc": "NPC_3",
+  "name": "Elena",
+  "role": "Healer",
+  "line": "I'm hurt, please help me!",
+  "note": "Elena the healer reads a request for help.",
+  "mood": "neutral",
+  "intent": "ask_help",
+  "response": "Sit down and tell me your symptoms. I will see what I can do."
+ }
+]

@@ -202,6 +202,8 @@ def narrate_action(action: str) -> str:
     parsed = parse(action)
     if parsed.intent == "haggle" and parsed.offer is not None:
         return f"The player offers {parsed.offer} coins and tries to haggle over the price."
+    if parsed.intent == "ask" and re.search(r"\b(?:how much|price|cost)\b", action, re.IGNORECASE):
+        return "The player asks you the price."  # the engine knows the price, so the reply must state it
     return _INTENT_NARRATION.get(parsed.intent) or f"The player does this: {action}."
 
 
@@ -214,7 +216,7 @@ def _user_turn(facts: List[str], situation: str, no_think: bool = True) -> str:
     lines = "\n".join(f"- {line}" for line in shown)
     prefix = "/no_think\n" if no_think else ""
     ask = ""
-    if situation.startswith("The player wants to buy") or "haggle" in situation:
+    if situation.startswith(("The player wants to buy", "The player asks you the price")) or "haggle" in situation:
         price = next((m.group(1) for f in shown if (m := re.search(r"for (\d+) coins\.", f))), None)
         if price:  # the engine knows the price: do not leave it to the model to remember to say it
             ask = f"\nSay the price: {price} coins."

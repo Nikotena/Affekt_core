@@ -52,5 +52,21 @@ class RepetitionTests(unittest.TestCase):
         self.assertFalse(any(line.startswith("Last reply") for line in other["payload"]))
 
 
+class PriceQuestionTests(unittest.TestCase):
+    FACTS = ["You are Marta, the Merchant.", "You sell a Healing potion for 25 coins.",
+             "Style: neutral and businesslike."]
+
+    def test_asking_the_price_makes_the_reply_state_it(self):
+        from modules.LLMLayer import build_messages
+        for line in ("Hey Marta, how much for a healing potion?", "What's the price of the potion?"):
+            last = build_messages(self.FACTS, line, mood="neutral", shots=0)[-1]["content"]
+            self.assertIn("Say the price: 25 coins.", last, line)
+
+    def test_other_questions_do_not(self):
+        from modules.LLMLayer import build_messages
+        last = build_messages(self.FACTS, "Where is the castle?", mood="neutral", shots=0)[-1]["content"]
+        self.assertNotIn("Say the price", last)
+
+
 if __name__ == "__main__":
     unittest.main()

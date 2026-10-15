@@ -19,7 +19,7 @@ HIGH_INERTIA = 0.8   # W at/above this halves incoming change (persistence rule)
 # A grudge-holder feels insults strongly and forgives slowly; an easy-going NPC shrugs them off.
 PROFILES = {
     NORMAL:      (1.0, 1.0, DECAY_FACTOR),
-    SANGUINE:    (0.7, 1.2, 0.35),   # forgives fast, warms up easily
+    SANGUINE:    (0.95, 1.2, 0.30),   # forgives fast, warms up easily
     CHOLERIC:    (1.4, 0.6, 0.10),   # quick to anger, slow to calm down
     MELANCHOLIC: (1.2, 0.7, 0.12),   # takes things hard, brightens slowly
     PHLEGMATIC:  (0.5, 0.5, 0.20),   # hard to move either way
