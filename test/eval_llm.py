@@ -20,8 +20,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from KankeiEngine import KankeiEngine
 from tone import matches_tone
+from modules.TextNumbers import normalize_prices
 from modules.LLMLayer import (DEFAULT_MODEL_PATH, FEW_SHOT, LlamaCppBackend, StubBackend,
-                              set_example_seed)
+                              set_example_seed, set_stable_examples, set_example_variants)
 
 # Vector (X valence, Y initiative, Z stress, W inertia) that produces each mood
 MOOD_VECTORS = {
@@ -83,7 +84,7 @@ def run_checks(reply, mood, expected):
         "no_meta": not any(w in low for w in META_WORDS),
         "no_copy": not any(r.lower() in low for _f, _a, r in FEW_SHOT),
         "no_leak": not leaks_example(reply),
-        "facts": any(e in reply for e in expected) if expected else True,
+        "facts": any(e in normalize_prices(reply) for e in expected) if expected else True,  # "twenty-five coins" counts
     }
     if mood in ("hostile", "friendly"):
         checks["tone"] = matches_tone(reply, mood)
@@ -99,10 +100,24 @@ def main():
     ap.add_argument("--sweep", help="comma-separated temperatures to compare, e.g. 0.3,0.5,0.7")
     ap.add_argument("--repeats", type=int, default=1, help="runs per scenario (reduces sampling noise)")
     ap.add_argument("--seed", type=int, default=None, help="seed for the few-shot rotation")
+    ap.add_argument("--stable", action="store_true", help="same few-shot examples every call (enables prompt reuse)")
+    ap.add_argument("--cache-mb", type=int, default=0, help="llama.cpp prompt-prefix cache size in MB")
+    ap.add_argument("--variants", type=int, default=0, help="N fixed example sets per mood, rotated at random")
+    ap.add_argument("--shots", type=int, default=3)
+    ap.add_argument("--top-p", type=float, default=0.8)
+    ap.add_argument("--top-k", type=int, default=20)
+    ap.add_argument("--threads", type=int, default=None)
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
-    backend = StubBackend() if args.stub else LlamaCppBackend(args.model, temperature=args.temperature)
+    set_stable_examples(args.stable)
+    if args.variants:
+        set_example_variants(args.variants)
+    backend = StubBackend() if args.stub else LlamaCppBackend(
+        args.model, temperature=args.temperature, n_threads=args.threads, prompt_cache_mb=args.cache_mb,
+        top_p=args.top_p, top_k=args.top_k)
+    if hasattr(backend, "shots"):
+        backend.shots = args.shots
     engine = KankeiEngine(llm=backend)
     engine.initialize_modules()
     set_example_seed(args.seed)

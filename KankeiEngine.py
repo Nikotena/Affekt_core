@@ -11,6 +11,7 @@ from modules.VectorialPersonality import VectorialPersonality
 from modules.MemorySet import MemorySet
 from modules.ContextFunction import ContextFunction
 from modules.GraphDatabase import GraphDatabase
+from modules.IntentParser import IntentParser, is_commerce
 from modules.LLMLayer import LLMBackend, StubBackend, FALLBACK_LINES, style_for
 
 class KankeiEngine:
@@ -22,6 +23,7 @@ class KankeiEngine:
         # Core modules (80/20 architecture: 80% deterministic, 20% AI)
         self.llm: LLMBackend = llm or StubBackend()
         self.personalities: Dict[str, VectorialPersonality] = {}
+        self.parser = IntentParser()
         self.memory = MemorySet()
         self.context = ContextFunction()
         # Passive persistence layer (in-memory primary graph + optional Neo4j)
@@ -90,8 +92,7 @@ class KankeiEngine:
     def _graph_facts(self, npc_id: str, subgraph: Dict, action: str) -> List[str]:
         """Natural-language facts from the NPC's neighbourhood, filtered by relevance to the action."""
         nodes = {n["id"]: n for n in subgraph["nodes"]}
-        commerce = self.context.should_trigger_script(action) or any(
-            w in action.lower() for w in ("buy", "sell", "price", "ask"))
+        commerce = is_commerce(action)
         facts = []
         for e in subgraph["edges"]:
             if e["source"] != npc_id:
@@ -151,19 +152,9 @@ class KankeiEngine:
         self.graph.add_edge("NPC_2", "OWNS", "item_sword")
     
     def _generate_action_delta(self, action: str) -> List[float]:
-        """Generate a delta vector based on the action string"""
-        # Simple heuristic for different actions
-        if "greet" in action.lower():
-            return [0.3, -0.2, 0.1, 0.7]  # Positive emotional impact
-        elif "fight" in action.lower() or "attack" in action.lower():
-            return [-0.4, 0.3, 0.8, 0.9]  # High stress, hostile
-        elif "ask" in action.lower() or "question" in action.lower():
-            return [0.2, 0.1, 0.3, 0.5]  # Moderate impact
-        elif "help" in action.lower() or "aid" in action.lower():
-            return [0.4, -0.1, 0.2, 0.6]  # Supportive action
-        else:
-            return [0.1, 0.1, 0.1, 0.5]  # Default small impact
-    
+        """Emotional push of a player action, from the rule-based intent parser."""
+        return list(self.parser.parse(action).delta)
+
     def process_action(self, npc_id: str, action: str) -> Dict:
         """Process a player action and return the engine response"""
         if not self.running:
@@ -171,7 +162,9 @@ class KankeiEngine:
         
         # Step 1: Vectorial Personality calculation (per NPC)
         personality = self.personality_for(npc_id)
-        action_delta = self._generate_action_delta(action)
+        parsed = self.parser.parse(action, names=self.names_for(npc_id))
+        text = parsed.clean or action  # what the player said without addressing the NPC by name
+        action_delta = list(parsed.delta)
         personality.update_from_action(action_delta)
         npc_node = self.graph.get_node(npc_id)
         if npc_node is not None:
@@ -202,13 +195,14 @@ class KankeiEngine:
                 self.graph.add_edge("player_01", "CAUSED", event_node_id)
 
         # Step 3: Context function evaluation (runs registered trigger scripts)
-        triggered = self.context.execute_context_function(npc_id, action)
+        triggered = self.context.execute_context_function(npc_id, text)
 
         # Step 4: Build strict payload for LLM
-        payload, subgraph = self.build_payload(npc_id, action)
+        payload, subgraph = self.build_payload(npc_id, text)
         # The LLM is only called for meaningful moments; everything else is deterministic.
-        use_llm = self.context.should_trigger_script(action) or event_node_id is not None
-        response = self._generate_response(payload, npc_id, action, use_llm, personality.mood())
+        use_llm = (self.context.should_trigger_script(text) or event_node_id is not None
+                   or parsed.intent != "other" or len(text.split()) > 2)
+        response = self._generate_response(payload, npc_id, text, use_llm, personality.mood())
 
         # Step 5: Consolidate and forget
         self._consolidate()
@@ -218,6 +212,9 @@ class KankeiEngine:
             "action": action,
             "response": response,
             "mood": personality.mood(),
+            "intent": parsed.intent,
+            "offer": parsed.offer,
+            "addressed": parsed.addressed,
             "triggered": triggered,
             "llm_used": use_llm,
             "payload": payload,
@@ -227,6 +224,22 @@ class KankeiEngine:
             "memory_event": event_node_id,
             "timestamp": time.time(),
         }
+
+    def names_for(self, npc_id: str) -> List[str]:
+        """Names the player may use to address this NPC: its name plus any nicknames."""
+        node = self.graph.get_node(npc_id)
+        if node is None:
+            return []
+        return [n for n in [node.properties.get("name"), *node.properties.get("aliases", [])] if n]
+
+    def add_alias(self, npc_id: str, alias: str) -> None:
+        """Register a nickname the player uses for an NPC ("Big Al", "old man")."""
+        node = self.graph.get_node(npc_id)
+        if node is None:
+            raise KeyError(npc_id)
+        aliases = node.properties.setdefault("aliases", [])
+        if alias and alias.lower() not in (a.lower() for a in aliases):
+            aliases.append(alias)
 
     def build_payload(self, npc_id: str, action: str):
         """Assemble the LLM payload for an NPC from its current state. Returns (payload, subgraph)."""

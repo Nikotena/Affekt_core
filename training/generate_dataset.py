@@ -24,7 +24,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "test"))
 
 from modules.LLMLayer import build_messages, narrate_action, set_example_seed  # noqa: E402
-from training.filters import drop_near_duplicates, reject_reason  # noqa: E402
+from training.filters import drop_near_duplicates, normalize_prices, reject_reason  # noqa: E402
 from training.scenarios import Scenario, generate_scenarios, make_payload  # noqa: E402
 
 DEFAULT_TEACHER = os.path.join(ROOT, "model", "LFM2.5-2.6B-Q3.8-TBrilliance-NEO-MAX-IQ4_XS.gguf")
@@ -137,9 +137,13 @@ def to_sample(row):
 
 
 def cmd_filter(args):
-    raw = read_jsonl(args.raw)
+    paths = [args.raw] if isinstance(args.raw, str) else args.raw
+    raw = [row for path in paths for row in read_jsonl(path)]
     reasons, clean = Counter(), []
     for row in raw:
+        fixed = normalize_prices(row["reply"])  # "twelve coins" -> "12 coins"
+        if fixed != row["reply"]:
+            row["reply_raw"], row["reply"] = row["reply"], fixed
         why = reject_reason(row["reply"], row["mood"], row["expected"], name=row["name"],
                             role=row["role"], allow_profanity=getattr(args, "allow_profanity", False),
                             place=row["place"], price=row["price"],
@@ -204,7 +208,7 @@ def main():
     g.set_defaults(fn=cmd_generate)
 
     f = sub.add_parser("filter")
-    f.add_argument("--raw", default="data/raw.jsonl")
+    f.add_argument("--raw", nargs="+", default=["data/raw.jsonl"], help="one or more raw files to merge")
     f.add_argument("--out-dir", default="data")
     f.add_argument("--allow-profanity", action="store_true")
     f.set_defaults(fn=cmd_filter)

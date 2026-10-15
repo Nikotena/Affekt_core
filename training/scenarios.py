@@ -10,6 +10,7 @@ import random
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional
 
+from modules.IntentParser import is_commerce
 from modules.LLMLayer import style_for
 
 # Game roles first (names differ from the game's so bench prompts never repeat verbatim).
@@ -85,9 +86,8 @@ class Scenario:
 
 
 def _commerce(action: str) -> bool:
-    """Mirror of KankeiEngine._graph_facts: when the NPC mentions what it sells."""
-    low = action.lower()
-    return any(w in low for w in ("sell", "give", "unlock", "buy", "trade", "price", "ask", "purchase"))
+    """Same rule the engine uses to decide whether the NPC mentions what it sells."""
+    return is_commerce(action)
 
 
 def make_payload(sc: Scenario) -> List[str]:

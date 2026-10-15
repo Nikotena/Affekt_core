@@ -11,6 +11,8 @@ import random
 import re
 from typing import Dict, List, Optional
 
+from modules.IntentParser import parse
+
 DEFAULT_MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                   "model", "Qwen3-0.6B-Q8_0.gguf")
 
@@ -32,14 +34,21 @@ FALLBACK_LINES = {
 
 
 # (keywords, second-person narration) - first match wins
-_ACTION_NARRATION = (
-    (("attack", "fight"), "The player attacks you."),
-    (("greet", "hello"), "The player greets you."),
-    (("help", "aid"), "The player offers to help you."),
-    (("buy", "purchase"), "The player wants to buy something from you."),
-    (("sell", "trade"), "The player wants to trade with you."),
-    (("ask", "question"), "The player asks you a question."),
-)
+_INTENT_NARRATION = {
+    "attack": "The player attacks you.",
+    "threaten": "The player threatens you.",
+    "insult": "The player insults you.",
+    "complain": "The player complains angrily at you.",
+    "greet": "The player greets you.",
+    "farewell": "The player says goodbye to you.",
+    "offer_help": "The player offers to help you.",
+    "ask_help": "The player asks you for help.",
+    "buy": "The player wants to buy something from you.",
+    "haggle": "The player tries to haggle over the price.",
+    "sell": "The player wants to trade with you.",
+    "ask": "The player asks you a question.",
+    "compliment": "The player compliments you.",
+}
 
 # The deterministic core decides HOW the NPC sounds; the model only words it.
 MOOD_STYLE = {
@@ -101,6 +110,24 @@ _EXAMPLES = (
 _rng = random.Random()
 
 
+_EXAMPLE_VARIANTS = 0  # 0 = fully random examples; N >= 1 = N fixed example sets per mood
+
+
+def set_example_variants(n: int) -> None:
+    """Bounded rotation: each mood has `n` fixed example sets and one is picked at random per call.
+
+    Every set is an identical prompt prefix, so llama.cpp's prompt cache can reuse it (speed),
+    while the choice among sets keeps replies from repeating (variety). n=1 means one fixed set.
+    """
+    global _EXAMPLE_VARIANTS
+    _EXAMPLE_VARIANTS = max(0, int(n))
+
+
+def set_stable_examples(stable: bool) -> None:
+    """Shortcut: True = a single fixed set per mood, False = random examples every call."""
+    set_example_variants(1 if stable else 0)
+
+
 def set_example_seed(seed: Optional[int]) -> None:
     """Make the few-shot rotation reproducible (used by the eval); None re-randomizes."""
     global _rng
@@ -118,6 +145,10 @@ def select_few_shot(mood: str, limit: int = 3, action: Optional[str] = None):
     model sees the right format; the rest are random, so no single phrase dominates.
     """
     same = [e for e in _EXAMPLES if e[0] == mood] or [e for e in _EXAMPLES if e[0] == "neutral"]
+    if _EXAMPLE_VARIANTS:
+        v = _rng.randrange(min(_EXAMPLE_VARIANTS, len(same)))
+        window = [same[(v * limit + j) % len(same)] for j in range(min(limit, len(same)))]
+        return [(facts + [style_line(m)], act, reply) for m, facts, act, reply in window]
     chosen = []
     matching = [e for e in same if action and e[2] == action]
     if matching:
@@ -143,12 +174,11 @@ def style_for(mood: str, initiative: float) -> str:
 
 
 def narrate_action(action: str) -> str:
-    """Rewrite a raw player action as a second-person sentence the small model can follow."""
-    text = action.lower()
-    for keywords, sentence in _ACTION_NARRATION:
-        if any(k in text for k in keywords):
-            return sentence
-    return f"The player does this: {action}."
+    """Rewrite what the player typed as a second-person sentence the small model can follow."""
+    parsed = parse(action)
+    if parsed.intent == "haggle" and parsed.offer is not None:
+        return f"The player offers {parsed.offer} coins and tries to haggle over the price."
+    return _INTENT_NARRATION.get(parsed.intent) or f"The player does this: {action}."
 
 
 _HIDDEN_PREFIXES = ("NPC: ", "Scene: ", "Player earlier: ")  # engine bookkeeping, noise for the model
@@ -207,7 +237,8 @@ class LlamaCppBackend(LLMBackend):
 
     def __init__(self, model_path: str = DEFAULT_MODEL_PATH, n_ctx: int = 1024,
                  n_threads: Optional[int] = None, max_tokens: int = 48,
-                 temperature: float = 0.4, n_gpu_layers: int = 0):
+                 temperature: float = 0.4, n_gpu_layers: int = 0, prompt_cache_mb: int = 0,
+                 top_p: float = 0.8, top_k: int = 20):
         try:
             from llama_cpp import Llama
         except ImportError as e:
@@ -216,8 +247,12 @@ class LlamaCppBackend(LLMBackend):
             raise FileNotFoundError(f"Model not found: {model_path}")
         self._llm = Llama(model_path=model_path, n_ctx=n_ctx, n_threads=n_threads,
                           n_gpu_layers=n_gpu_layers, verbose=False)
+        if prompt_cache_mb > 0:  # remember the evaluated state of earlier prompts (shared prefixes are free)
+            from llama_cpp.llama_cache import LlamaRAMCache
+            self._llm.set_cache(LlamaRAMCache(capacity_bytes=prompt_cache_mb * 1024 * 1024))
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.top_p, self.top_k = top_p, top_k  # a peaked model + low top_p collapses to one answer
         self.shots = 3  # few-shot examples per call; a fine-tuned model uses 0
         meta = self._llm.metadata
         self.name = meta.get("general.name", os.path.basename(model_path))
@@ -235,7 +270,7 @@ class LlamaCppBackend(LLMBackend):
 
     def generate(self, payload: List[str], action: str) -> str:
         messages = build_messages(payload, action, no_think=self._is_qwen, shots=self.shots)
-        sampling = dict(max_tokens=self.max_tokens, temperature=self.temperature, top_p=0.8, top_k=20)
+        sampling = dict(max_tokens=self.max_tokens, temperature=self.temperature, top_p=self.top_p, top_k=self.top_k)
         if self._formatter is None:
             out = self._llm.create_chat_completion(messages=messages, **sampling)
             return clean_output(out["choices"][0]["message"]["content"])

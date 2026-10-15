@@ -111,6 +111,32 @@ Neo4j persistence active: False
 
 ---
 
+## Texto libre del jugador
+
+El motor entiende lo que el jugador escribe con `modules/IntentParser.py`, un analizador por
+reglas (sin modelo, determinista). Devuelve la intención (saludo, pregunta, compra, regateo,
+elogio, insulto, queja, amenaza, ataque...), cuánto cambia el ánimo del NPC, el precio
+ofrecido y el objeto mencionado.
+
+- El jugador puede dirigirse al NPC por su nombre o por un apodo (`Hey Marta, ...`,
+  `[NPC_Name]`); el nombre se ignora para entender la frase. Apodos nuevos:
+  `engine.add_alias("NPC_1", "Big M")`.
+- Medir cuánto acierta con frases reales: escribe una frase por línea en un `.txt` y
+
+  ```powershell
+  python test\review_lines.py text.txt --out lines_review.csv
+  ```
+
+  Abre el CSV y rellena `fix_intent` (y `fix_valence`: -1, 0 o 1) **solo en las filas que
+  el analizador falló**. Después:
+
+  ```powershell
+  python test\review_lines.py --score lines_review.csv --save-labels labels.json
+  ```
+
+  Muestra el acierto, qué reglas causan los errores y las confusiones más frecuentes.
+- Bancos de prueba: `python test\eval_intent.py --set dev|heldout|stress|user|all --errors`.
+
 ## Activar la Persistencia Neo4j (Opcional)
 
 Por defecto el grafo es **solo en memoria**, que es todo lo necesario

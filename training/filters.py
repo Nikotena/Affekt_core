@@ -13,6 +13,7 @@ from typing import Dict, Iterable, List, Optional
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "test"))
 
 from eval_llm import run_checks  # noqa: E402
+from modules.TextNumbers import SPELLED_PRICE_RE, normalize_prices, words_to_int  # noqa: E402,F401  (re-exported)
 
 STAGE_RE = re.compile(r"[*\[\]()<>_~{}]")
 THIRD_PERSON_RE = re.compile(
@@ -25,13 +26,14 @@ REASONING_RE = re.compile(
     re.IGNORECASE)
 PROFANITY_RE = re.compile(r"\b(fuck\w*|shit\w*|bitch\w*|cunt|asshole|dickhead|motherfucker)\b", re.IGNORECASE)
 MIN_WORDS = 3
-
-
+QUOTE_RE = re.compile(r'["“”]')  # an NPC line is spoken, it is not a quoted passage
 def echoes_identity(reply: str, name: Optional[str], role: Optional[str]) -> bool:
     """True if the NPC recites its own prompt facts ("I'm Lorcan, the Miller")."""
     if not name:
         return False
     if re.search(rf"\b(i'?m|i am|my name is|name's)\s+{re.escape(name)}\b", reply, re.IGNORECASE):
+        return True
+    if re.search(rf"\b{re.escape(name)}\b", reply):  # own name anywhere: narration or wrong address
         return True
     return bool(role and re.search(rf"\b(i'?m|i am) (a|an|the) {re.escape(role)}\b", reply, re.IGNORECASE))
 
@@ -73,6 +75,10 @@ def reject_reason(reply: str, mood: str, expected: List[str], name: Optional[str
         return "profanity"
     if STAGE_RE.search(reply):
         return "stage_direction"
+    if QUOTE_RE.search(reply):
+        return "quoted_dialogue"
+    if SPELLED_PRICE_RE.search(reply):
+        return "spelled_price"
     if THIRD_PERSON_RE.search(reply):
         return "third_person"
     if PREFIX_RE.match(reply):

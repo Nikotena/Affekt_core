@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(ROOT, "test"))
 
 from KankeiEngine import KankeiEngine
 from modules.LLMLayer import build_messages
-from training.filters import drop_near_duplicates, reject_reason
+from training.filters import drop_near_duplicates, normalize_prices, reject_reason, words_to_int
 from training.generate_dataset import bench_keys, cmd_filter, cmd_review, read_jsonl, to_sample
 from training.scenarios import (HELD_OUT_ITEMS, HELD_OUT_ROLES, Scenario, generate_scenarios,
                                 make_payload)
@@ -125,6 +125,24 @@ class FilterTests(unittest.TestCase):
         ok = "Welcome, friend! That one is 45 coins, a fair price."
         self.assertIsNone(reject_reason(ok, "friendly", [], price=45, price_shown=True))
 
+    def test_narration_and_quoted_dialogue_are_rejected(self):
+        narr = 'Isolde wipes her hands on her apron and smiles. "Ask what you will, friend."'
+        self.assertEqual(reject_reason(narr, "friendly", [], name="Isolde", role="Cook"), "recites_identity")
+        self.assertEqual(reject_reason('She grins. "Ask what you will, friend."', "friendly", []), "quoted_dialogue")
+        self.assertEqual(reject_reason('Ask me anything, "friend", and I will answer.', "friendly", []), "quoted_dialogue")
+
+    def test_own_name_anywhere_is_rejected(self):
+        self.assertEqual(reject_reason("...Hale. The gate is closed, friend.", "tense", [], name="Hale", role="Guard"),
+                         "recites_identity")
+
+    def test_spelled_out_prices_are_rejected(self):
+        for line in ("Welcome, friend! Seventy-five coins and it is yours.",
+                     "Welcome, friend! That is twelve coins for the lot.",
+                     "Welcome, friend! One hundred twenty gold coins, no less."):
+            self.assertEqual(reject_reason(line, "friendly", []), "spelled_price", line)
+        self.assertIsNone(reject_reason("Welcome, friend! That is 12 coins for the lot.", "friendly", [],
+                                        price=12, price_shown=True))
+
     def test_profanity_can_be_allowed(self):
         line = "Get out of my shop, you fool, damn your hide."
         self.assertIsNone(reject_reason(line, "hostile", []))
@@ -143,6 +161,28 @@ class FilterTests(unittest.TestCase):
                 {"reply": "Welcome, friend! Come in and sit by the fire now."},
                 {"reply": "Move along before I lose my patience."}]
         self.assertEqual(len(drop_near_duplicates(rows)), 2)
+
+
+class PriceNormalizationTests(unittest.TestCase):
+    def test_words_to_int(self):
+        cases = {"twelve": 12, "seventy-five": 75, "one hundred": 100, "one hundred twenty": 120,
+                 "two hundred and fifty": 250, "Twenty": 20, "ninety-nine": 99}
+        for words, n in cases.items():
+            self.assertEqual(words_to_int(words), n, words)
+        self.assertIsNone(words_to_int("banana"))
+
+    def test_prices_become_digits(self):
+        self.assertEqual(normalize_prices("That is twelve coins for the lot."), "That is 12 coins for the lot.")
+        self.assertEqual(normalize_prices("Seventy-five gold coins, no less."), "75 gold coins, no less.")
+        self.assertEqual(normalize_prices("One hundred and twenty coins."), "120 coins.")
+        self.assertEqual(normalize_prices("It costs 12 coins."), "It costs 12 coins.")
+        self.assertEqual(normalize_prices("Ten men came, none with coins."), "Ten men came, none with coins.")
+
+    def test_normalized_line_passes_the_price_check(self):
+        line = normalize_prices("Welcome, friend! That one is forty-five coins, a fair price.")
+        self.assertIsNone(reject_reason(line, "friendly", [], price=45, price_shown=True))
+        wrong = normalize_prices("Welcome, friend! That one is fifty coins, a fair price.")
+        self.assertEqual(reject_reason(wrong, "friendly", [], price=45, price_shown=True), "invented_price")
 
 
 class PipelineTests(unittest.TestCase):
