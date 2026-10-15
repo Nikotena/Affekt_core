@@ -155,3 +155,7 @@ training/              dataset tools for a future fine-tune of a small local mod
 | `HTTP 401` / `403` | Wrong or rotated key, or the account is still under review |
 | `No Gemma 4 model found` | You asked for a local model: pass `model_path=` or set `AFFEKT_MODEL` |
 | `ModuleNotFoundError: modules` | Run commands from the project root |
+
+## License
+
+MIT. See [LICENSE](LICENSE).

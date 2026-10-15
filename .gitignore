@@ -11,3 +11,5 @@ data/
 text.txt
 
 !test/data/
+
+lines_*.csv

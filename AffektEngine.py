@@ -9,7 +9,8 @@ import os
 import time
 from typing import Dict, List, Optional
 
-from modules.VectorialPersonality import VectorialPersonality
+from modules.VectorialPersonality import (CHOLERIC, MELANCHOLIC, NORMAL, PHLEGMATIC, SANGUINE,
+                                          VectorialPersonality)
 from modules.MemorySet import MemorySet
 from modules.ContextFunction import ContextFunction
 from modules.GraphDatabase import GraphDatabase
@@ -17,6 +18,11 @@ from modules.IntentLLM import refine as refine_intent
 from modules.IntentParser import IntentParser, is_commerce
 from modules.LLMLayer import (LLMBackend, LlamaCppBackend, StubBackend, FALLBACK_LINES, style_for,
                               set_example_variants)
+
+# Who reacts how: the bartender shrugs things off, the blacksmith holds a grudge.
+NPC_TEMPERAMENTS = {"NPC_0": SANGUINE, "NPC_1": NORMAL, "NPC_2": PHLEGMATIC,
+                    "NPC_3": MELANCHOLIC, "NPC_4": CHOLERIC}
+
 
 class AffektEngine:
     def __init__(self, neo4j_uri: str = "bolt://localhost:7687",
@@ -75,7 +81,6 @@ class AffektEngine:
     
     def initialize_modules(self):
         """Initialize all modules"""
-        self.personality_for("NPC_0").set_temperament(0)  # Normal temperament
         self.context.switch_context("chapter_start")
 
         # Initial context setup
@@ -95,7 +100,7 @@ class AffektEngine:
     def personality_for(self, npc_id: str) -> VectorialPersonality:
         """Each NPC has its own emotional state, created on first use."""
         if npc_id not in self.personalities:
-            self.personalities[npc_id] = VectorialPersonality(npc_id)
+            self.personalities[npc_id] = VectorialPersonality(npc_id, NPC_TEMPERAMENTS.get(npc_id, NORMAL))
         return self.personalities[npc_id]
 
     def _graph_facts(self, npc_id: str, subgraph: Dict, action: str) -> List[str]:

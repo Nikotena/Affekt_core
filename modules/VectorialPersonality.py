@@ -15,6 +15,16 @@ DECAY_FACTOR = 0.2   # pull towards baseline per update (low inertia only); 0.1 
 LOW_INERTIA = 0.7    # W below this decays towards baseline
 HIGH_INERTIA = 0.8   # W at/above this halves incoming change (persistence rule)
 
+# Per temperament: (gain on negative valence, gain on positive valence, decay towards baseline).
+# A grudge-holder feels insults strongly and forgives slowly; an easy-going NPC shrugs them off.
+PROFILES = {
+    NORMAL:      (1.0, 1.0, DECAY_FACTOR),
+    SANGUINE:    (0.7, 1.2, 0.35),   # forgives fast, warms up easily
+    CHOLERIC:    (1.4, 0.6, 0.10),   # quick to anger, slow to calm down
+    MELANCHOLIC: (1.2, 0.7, 0.12),   # takes things hard, brightens slowly
+    PHLEGMATIC:  (0.5, 0.5, 0.20),   # hard to move either way
+}
+
 
 def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
@@ -39,16 +49,12 @@ class VectorialPersonality:
     def apply_acceleration(self, delta_vector: List[float]) -> List[float]:
         """Return a NEW delta scaled by temperament and temporal inertia (input is untouched)."""
         d = list(delta_vector)
-        if self.temperament == SANGUINE:        # optimistic: smoother transitions
-            d[0] *= 0.8
-        elif self.temperament == CHOLERIC:      # hostile: strong initiative, amplified negativity
+        neg_gain, pos_gain, _ = PROFILES.get(self.temperament, PROFILES[NORMAL])
+        d[0] *= neg_gain if d[0] < 0 else pos_gain
+        if self.temperament == CHOLERIC:        # strong initiative
             d[1] *= 1.5
-            if d[0] < 0:
-                d[0] *= 1.3
-        elif self.temperament == MELANCHOLIC:   # withdrawn: stress-prone, dampened valence
+        elif self.temperament == MELANCHOLIC:   # stress-prone
             d[2] *= 1.4
-            d[0] *= 0.9
-        # PHLEGMATIC / NORMAL: no modifier
 
         if self.vector[3] >= HIGH_INERTIA:
             for i in range(3):
@@ -67,8 +73,9 @@ class VectorialPersonality:
 
         # Low inertia: the emotion fades towards the baseline; high inertia: it sticks.
         if self.vector[3] < LOW_INERTIA:
+            decay = PROFILES.get(self.temperament, PROFILES[NORMAL])[2]
             for i in range(3):
-                self.vector[i] += (self.baseline[i] - self.vector[i]) * DECAY_FACTOR
+                self.vector[i] += (self.baseline[i] - self.vector[i]) * decay
 
         self.vector[3] = action_delta[3]
         self.vector = [_clamp(v, lo, hi) for v, (lo, hi) in zip(self.vector, _RANGES)]
