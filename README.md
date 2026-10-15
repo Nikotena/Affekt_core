@@ -20,6 +20,12 @@ AMD GPUs through AMD Token Factory.
 - **Graceful fallback**: if the model is unreachable, NPCs answer with deterministic lines for their mood.
 - **Standard library only** for the engine, the tests and the AMD API client.
 
+## Architecture
+
+![Affekt Core architecture](docs/architecture.svg)
+
+How the AMD-hosted model is used, and what was and was not measured: [docs/amd.md](docs/amd.md).
+
 ## Try it
 
 Requires Python 3.9 or newer. No packages to install.
