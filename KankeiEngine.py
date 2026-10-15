@@ -342,7 +342,7 @@ def find_default_model() -> Optional[str]:
 def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] = None,
                   n_threads: Optional[int] = None, cache_mb: int = 512, n_ctx: int = 2048,
                   llm: Optional[LLMBackend] = None, warm_up: bool = False,
-                  **engine_kwargs) -> "KankeiEngine":
+                  use_amd_api: bool = False, **engine_kwargs) -> "KankeiEngine":
     """Build a ready-to-use engine with the configuration measured best for Gemma 4:
 
     two few-shot examples drawn from 5 fixed sets per mood (the prompt prefix repeats, so the
@@ -355,10 +355,18 @@ def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] 
     `warm_up=True` reads every prompt prefix once at startup (about a minute on CPU, seconds on a
     GPU) so the first players do not pay for filling the cache; recommended for the server.
 
+    `use_amd_api=True` skips the local model and calls Gemma-4-31B-IT on the AMD Token Factory API
+    (key AMD_API_KEY in the environment or .env); no GGUF file is needed.
+
     Pass `llm=` to inject any backend (tests use StubBackend). Extra keyword arguments go to
     KankeiEngine (e.g. connect_neo4j=True). Raises instead of silently falling back to canned
     lines, so a wrong path is noticed before the demo.
     """
+    if llm is None and use_amd_api:
+        from modules.OpenRouterBackend import AMDBackend
+        llm = AMDBackend(temperature=0.5)
+        llm.shots = 2
+        set_example_variants(5)
     if llm is None:
         path = model_path or find_default_model()
         if not path:

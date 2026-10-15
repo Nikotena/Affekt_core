@@ -8,6 +8,7 @@ variable or the project's .env file and is never printed, stored or put in a row
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -28,12 +29,12 @@ class OpenRouterError(RuntimeError):
     pass
 
 
-def load_key(env_file: Optional[str] = None) -> str:
+def load_key(env_file: Optional[str] = None, key_name: str = KEY_NAME) -> str:
     """API key from the environment, else from the project's .env file ('' if neither).
 
-    Only KEY_NAME is read from .env; nothing else is exported and the value is never logged.
+    Only `key_name` is read from .env; nothing else is exported and the value is never logged.
     """
-    key = os.environ.get(KEY_NAME, "").strip()
+    key = os.environ.get(key_name, "").strip()
     if key:
         return key
     path = env_file or os.path.join(ROOT, ".env")
@@ -44,7 +45,7 @@ def load_key(env_file: Optional[str] = None) -> str:
                 if line.startswith("export "):
                     line = line[len("export "):]
                 name, sep, value = line.partition("=")
-                if sep and name.strip() == KEY_NAME:
+                if sep and name.strip() == key_name:
                     return value.strip().strip("\"'")
     except OSError:
         pass
@@ -52,13 +53,17 @@ def load_key(env_file: Optional[str] = None) -> str:
 
 
 class OpenRouterBackend(LLMBackend):
+    endpoint = ENDPOINT
+    key_name = KEY_NAME
+    title = "Kankei Core dataset generation"
+
     def __init__(self, model: str = DEFAULT_MODEL, api_key: Optional[str] = None,
                  temperature: float = 0.7, max_tokens: int = 160, min_interval: float = 3.0,
-                 retries: int = 6, disable_reasoning: bool = True,
+                 retries: int = 6, disable_reasoning: bool = True, timeout: float = 120.0,
                  opener: Optional[Callable] = None, sleep: Callable[[float], None] = time.sleep):
-        self._key = api_key or load_key()
+        self._key = api_key or load_key(key_name=self.key_name)
         if not self._key:
-            raise OpenRouterError(f"{KEY_NAME} not found: set it in the environment or in .env")
+            raise OpenRouterError(f"{self.key_name} not found: set it in the environment or in .env")
         self.model = model
         self.name = model
         self.temperature = temperature
@@ -69,30 +74,28 @@ class OpenRouterBackend(LLMBackend):
         self.shots = 3
         self._open = opener or urllib.request.urlopen
         self._sleep = sleep
-        self._last_call = 0.0
+        self.timeout = timeout
+        self._last_call = 0.0  # start time of the latest slot handed out
+        self._slot_lock = threading.Lock()  # lets several worker threads share one rate limit
 
     def __repr__(self) -> str:  # never expose the key
-        return f"OpenRouterBackend(model={self.model!r})"
+        return f"{type(self).__name__}(model={self.model!r})"
 
     # -- HTTP -------------------------------------------------------------
     def _request(self, body: Dict) -> urllib.request.Request:
         return urllib.request.Request(
-            ENDPOINT, data=json.dumps(body).encode("utf-8"), method="POST",
+            self.endpoint, data=json.dumps(body).encode("utf-8"), method="POST",
             headers={"Authorization": f"Bearer {self._key}", "Content-Type": "application/json",
-                     "X-Title": "Kankei Core dataset generation"})
+                     "X-Title": self.title})
 
     def _post(self, body: Dict) -> Dict:
-        wait = self.min_interval - (time.time() - self._last_call)
-        if wait > 0:
-            self._sleep(wait)
         delay = 2.0
         for attempt in range(self.retries + 1):
+            self._wait_for_slot()
             try:
-                with self._open(self._request(body), timeout=120) as resp:
-                    self._last_call = time.time()
+                with self._open(self._request(body), timeout=self.timeout) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             except urllib.error.HTTPError as e:
-                self._last_call = time.time()
                 if e.code in RETRY_STATUS and attempt < self.retries:
                     retry_after = e.headers.get("Retry-After") if e.headers else None
                     self._sleep(float(retry_after) if retry_after and retry_after.isdigit() else delay)
@@ -106,6 +109,19 @@ class OpenRouterBackend(LLMBackend):
                     continue
                 raise OpenRouterError(f"network error: {e}") from None
         raise OpenRouterError("retries exhausted")
+
+    def _wait_for_slot(self) -> None:
+        """Reserve the next request start time, at least `min_interval` after the previous one.
+
+        With several threads the starts are spread out, so the per-minute limit holds while
+        the slow responses overlap.
+        """
+        with self._slot_lock:
+            now = time.time()
+            start = max(now, self._last_call + self.min_interval)
+            self._last_call = start
+        if start > now:
+            self._sleep(start - now)
 
     @staticmethod
     def _error_text(e: urllib.error.HTTPError) -> str:
@@ -138,3 +154,26 @@ class OpenRouterBackend(LLMBackend):
         except (KeyError, IndexError, TypeError):
             raise OpenRouterError(f"unexpected response: {str(data)[:200]}") from None
         return clean_output(text)
+
+
+# -- AMD Token Factory (AMD Radeon Cloud, OpenAI-compatible, free shared endpoints) ----------
+AMD_ENDPOINT = "https://developer.amd.com.cn/radeon/api/v1/chat/completions"
+AMD_DEFAULT_MODEL = "Gemma-4-31B-IT"
+AMD_KEY_NAME = "AMD_API_KEY"
+
+
+class AMDBackend(OpenRouterBackend):
+    """Gemma-4-31B-IT (or any catalog model) served on AMD GPUs by Token Factory.
+
+    Same chat-completions protocol. Differences from OpenRouter: the gateway rejects the
+    `reasoning` object with HTTP 400 (Gemma does not think by default, so nothing is sent), and
+    the free tier allows ~20 requests/minute per account, hence the 3.2 s default spacing.
+    429s honour Retry-After through the inherited retry loop. The key is shared by the whole team.
+    """
+    endpoint = AMD_ENDPOINT
+    key_name = AMD_KEY_NAME
+    title = "Kankei Core"
+
+    def __init__(self, model: str = AMD_DEFAULT_MODEL, min_interval: float = 3.2,
+                 disable_reasoning: bool = False, **kw):
+        super().__init__(model, min_interval=min_interval, disable_reasoning=disable_reasoning, **kw)

@@ -185,5 +185,50 @@ class TeacherSelectionTests(unittest.TestCase):
         self.assertNotIn(KEY, repr(teacher))
 
 
+class AMDBackendTests(unittest.TestCase):
+    def make(self, net):
+        return orb.AMDBackend(api_key=KEY, opener=net, sleep=lambda s: None, min_interval=0)
+
+    def test_endpoint_model_and_no_reasoning_field(self):
+        net = FakeNet("Welcome, friend.")
+        b = self.make(net)
+        self.assertEqual(b.generate(PAYLOAD, "greet the NPC"), "Welcome, friend.")
+        req = net.requests[0]
+        body = json.loads(req.data)
+        self.assertEqual(req.full_url, orb.AMD_ENDPOINT)
+        self.assertEqual(body["model"], "Gemma-4-31B-IT")
+        self.assertNotIn("reasoning", body)  # the gateway answers 400 to reasoning.enabled
+        self.assertEqual(body["messages"][0]["role"], "system")
+        self.assertNotIn(KEY, repr(b))
+
+    def test_reads_amd_key_from_env_file_with_spaces(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, ".env")
+            with open(path, "w") as f:
+                f.writelines(["OPENROUTER_API_KEY =other", chr(10), "AMD_API_KEY = rc-abc123", chr(10)])
+            old = os.environ.pop("AMD_API_KEY", None)
+            try:
+                self.assertEqual(load_key(path, key_name="AMD_API_KEY"), "rc-abc123")
+            finally:
+                if old is not None:
+                    os.environ["AMD_API_KEY"] = old
+
+    def test_429_honours_retry_after(self):
+        sleeps = []
+        net = FakeNet(http_error(429, {"Retry-After": "60"}), "Hm.")
+        b = orb.AMDBackend(api_key=KEY, opener=net, sleep=sleeps.append, min_interval=0)
+        self.assertEqual(b.generate(PAYLOAD, "greet the NPC"), "Hm.")
+        self.assertEqual(sleeps, [60.0])
+
+    def test_make_teacher_amd(self):
+        os.environ["AMD_API_KEY"] = KEY
+        args = argparse.Namespace(teacher="amd", model=None, teacher_license="see model card",
+                                  temperature=0.7, min_interval=None)
+        teacher, label = make_teacher(args)
+        self.assertEqual(label, "Gemma-4-31B-IT")
+        self.assertIsInstance(teacher, orb.AMDBackend)
+        self.assertEqual(teacher.min_interval, 3.2)
+
+
 if __name__ == "__main__":
     unittest.main()
