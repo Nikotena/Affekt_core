@@ -55,7 +55,7 @@ def load_key(env_file: Optional[str] = None, key_name: str = KEY_NAME) -> str:
 class OpenRouterBackend(LLMBackend):
     endpoint = ENDPOINT
     key_name = KEY_NAME
-    title = "Kankei Core dataset generation"
+    title = "Affekt Core dataset generation"
 
     def __init__(self, model: str = DEFAULT_MODEL, api_key: Optional[str] = None,
                  temperature: float = 0.7, max_tokens: int = 160, min_interval: float = 3.0,
@@ -172,7 +172,7 @@ class AMDBackend(OpenRouterBackend):
     """
     endpoint = AMD_ENDPOINT
     key_name = AMD_KEY_NAME
-    title = "Kankei Core"
+    title = "Affekt Core"
 
     def __init__(self, model: str = AMD_DEFAULT_MODEL, min_interval: float = 3.2,
                  disable_reasoning: bool = False, **kw):

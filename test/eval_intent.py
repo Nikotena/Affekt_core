@@ -6,7 +6,7 @@ Intent/tone benchmark for free-text player input.
     python test/eval_intent.py --errors   # list every wrong line
 
 A classifier is any object with classify(text) -> (intent, valence). KeywordClassifier is
-what KankeiEngine does today (narrate_action for the intent the LLM sees, and
+what AffektEngine does today (narrate_action for the intent the LLM sees, and
 _generate_action_delta for the emotional effect on the NPC).
 """
 

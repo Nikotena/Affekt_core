@@ -10,7 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "test"))
 
-from KankeiEngine import KankeiEngine
+from AffektEngine import AffektEngine
 from modules.LLMLayer import build_messages
 from training.filters import drop_near_duplicates, normalize_prices, reject_reason, words_to_int
 from training.generate_dataset import bench_keys, cmd_filter, cmd_review, read_jsonl, to_sample
@@ -19,7 +19,7 @@ from training.scenarios import (HELD_OUT_ITEMS, HELD_OUT_ROLES, Scenario, genera
 
 
 def engine_messages(npc_id, mood_vector, action):
-    e = KankeiEngine()
+    e = AffektEngine()
     e.initialize_modules()
     e.personality_for(npc_id).vector = list(mood_vector)
     payload, _ = e.build_payload(npc_id, action)

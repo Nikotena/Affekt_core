@@ -6,7 +6,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from KankeiEngine import KankeiEngine
+from AffektEngine import AffektEngine
 from modules.IntentParser import IntentParser, parse, strip_vocatives
 
 NAMES = ["Marta", "Guard", "Big Al"]
@@ -50,7 +50,7 @@ class VocativeTests(unittest.TestCase):
 
 class EngineNameTests(unittest.TestCase):
     def setUp(self):
-        self.e = KankeiEngine()
+        self.e = AffektEngine()
         self.e.initialize_modules()
         self.e.running = True
 

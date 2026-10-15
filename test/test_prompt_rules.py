@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from KankeiEngine import KankeiEngine
+from AffektEngine import AffektEngine
 from modules.IntentParser import is_commerce
 from modules.LLMLayer import build_messages
 
@@ -22,7 +22,7 @@ class CommerceTests(unittest.TestCase):
             self.assertTrue(is_commerce(text), text)
 
     def test_small_talk_gets_no_sale_fact_but_a_purchase_does(self):
-        e = KankeiEngine()
+        e = AffektEngine()
         e.initialize_modules()
         e.running = True
         chat = e.process_action("NPC_1", "How is life treating you?")
@@ -43,7 +43,7 @@ class RepetitionTests(unittest.TestCase):
         self.assertNotIn("Do not start like", build_messages(PAYLOAD, "Hello there!", shots=0)[-1]["content"])
 
     def test_engine_remembers_each_npcs_last_reply(self):
-        e = KankeiEngine()
+        e = AffektEngine()
         e.initialize_modules()
         e.running = True
         first = e.process_action("NPC_1", "Hello there!")

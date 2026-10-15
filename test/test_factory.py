@@ -8,7 +8,7 @@ from unittest import mock
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import KankeiEngine as ke
+import AffektEngine as ke
 from modules.IntentParser import parse
 from modules.LLMLayer import StubBackend, set_example_variants
 from modules.VectorialPersonality import VectorialPersonality
@@ -66,7 +66,7 @@ class FactoryTests(unittest.TestCase):
             ke.create_engine(model_path=os.path.join(self.tmp.name, "nope.gguf"))
         self.assertIn("nope.gguf", str(cm.exception))
         with mock.patch.object(ke, "find_default_model", return_value=None):
-            with self.assertRaisesRegex(FileNotFoundError, "KANKEI_MODEL"):
+            with self.assertRaisesRegex(FileNotFoundError, "AFFEKT_MODEL"):
                 ke.create_engine()
 
     def test_default_model_search(self):

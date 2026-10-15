@@ -6,7 +6,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import KankeiEngine as ke
+import AffektEngine as ke
 from modules.LLMLayer import (MOOD_STYLE, LlamaCppBackend, StubBackend, build_messages, example_windows,
                               select_few_shot, set_example_seed, set_example_variants)
 

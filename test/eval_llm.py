@@ -18,7 +18,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from KankeiEngine import KankeiEngine
+from AffektEngine import AffektEngine
 from tone import matches_tone
 from modules.TextNumbers import normalize_prices
 from modules.LLMLayer import (DEFAULT_MODEL_PATH, FEW_SHOT, LlamaCppBackend, StubBackend,
@@ -124,7 +124,7 @@ def main():
             top_p=args.top_p, top_k=args.top_k)
     if hasattr(backend, "shots"):
         backend.shots = args.shots
-    engine = KankeiEngine(llm=backend)
+    engine = AffektEngine(llm=backend)
     engine.initialize_modules()
     set_example_seed(args.seed)
 

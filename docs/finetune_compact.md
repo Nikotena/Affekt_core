@@ -1,4 +1,4 @@
-# Fine-tuning de Qwen3 para Kankei_core - Iteration Compact
+# Fine-tuning de Qwen3 para Affekt_core - Iteration Compact
 
 Estado: PROPUESTA. Los umbrales de "Success metric" y "Guardrails" son mios y hay que confirmarlos antes de entrenar.
 
@@ -8,7 +8,7 @@ Estado: PROPUESTA. Los umbrales de "Success metric" y "Guardrails" son mios y ha
 
 **Decision owner:** Aaron.
 
-**Action changed by the model:** `KankeiEngine._generate_response` pasa de "prompt con 3 ejemplos + modelo base" a "prompt sin ejemplos + modelo ajustado". El motor determinista (vector, memoria, grafo, triggers) no cambia: sigue decidiendo ANIMO y HECHOS; el modelo solo redacta.
+**Action changed by the model:** `AffektEngine._generate_response` pasa de "prompt con 3 ejemplos + modelo base" a "prompt sin ejemplos + modelo ajustado". El motor determinista (vector, memoria, grafo, triggers) no cambia: sigue decidiendo ANIMO y HECHOS; el modelo solo redacta.
 
 **Success metric (sobre escenarios reservados, ver abajo):**
 - tono >= 85 % (heuristica `test/tone.py`) y >= 80 % aceptable en revision manual de 30 muestras
@@ -33,7 +33,7 @@ Estado: PROPUESTA. Los umbrales de "Success metric" y "Guardrails" son mios y ha
 **Constraints:** CPU local para inferencia (llama.cpp, GGUF); entrenamiento en GPU gratuita de la nube (T4); licencia del modelo profesor revisada antes de entrenar con sus salidas.
 
 **Labels and data snapshot:**
-- Entrada: payload exacto que produce `KankeiEngine.build_payload` (misma estructura que en juego).
+- Entrada: payload exacto que produce `AffektEngine.build_payload` (misma estructura que en juego).
 - Salida: linea del NPC generada por el profesor y filtrada.
 - Profesor: nvidia/nemotron-3-ultra-550b-a55b:free via OpenRouter (`--teacher openrouter`), elegido porque se espera una
   licencia que permita entrenar con sus salidas. PENDIENTE DE VERIFICAR por Aaron en la ficha del modelo; la licencia

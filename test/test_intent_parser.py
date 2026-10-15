@@ -7,7 +7,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "test"))
 
-from KankeiEngine import KankeiEngine
+from AffektEngine import AffektEngine
 from modules.IntentParser import INTENT_DELTAS, INTENTS, IntentParser, is_commerce, parse
 from modules.LLMLayer import narrate_action
 from player_lines import LINES
@@ -134,7 +134,7 @@ class RealPlayerLinesTests(unittest.TestCase):
 
 class EngineIntegrationTests(unittest.TestCase):
     def setUp(self):
-        self.e = KankeiEngine()
+        self.e = AffektEngine()
         self.e.initialize_modules()
         self.e.running = True
 

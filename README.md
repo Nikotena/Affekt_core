@@ -1,4 +1,4 @@
-# Kankei Core
+# Affekt Core
 
 Motor narrativo para videojuegos construido bajo una **filosofía 80/20**: 80% lógica determinista, 20% inteligencia artificial. El núcleo determinista simula la emoción, memoria y contexto de escena de los NPC; un micro-LLM local (AMD Ryzen AI / ROCm) se reserva como capa de refinamiento que convierte el estado estructurado en lenguaje natural.
 
@@ -10,7 +10,7 @@ Motor narrativo para videojuegos construido bajo una **filosofía 80/20**: 80% l
 | Memoria (Memory Set) | `modules/MemorySet.py` | Memoria de 3 capas (corto / medio / largo plazo) |
 | Función de Contexto | `modules/ContextFunction.py` | Orquestador de escena + payload estricto para LLM |
 | Gestión Neo4j | `modules/GraphDatabase.py` | Grafo en memoria + persistencia Neo4j opcional |
-| Controlador del Motor | `KankeiEngine.py` | Coordina la tubería completa |
+| Controlador del Motor | `AffektEngine.py` | Coordina la tubería completa |
 
 ## Requisitos
 
@@ -52,13 +52,13 @@ python -m unittest discover -s test -v
 ### Paso 3: Ejecuta la demo del motor directamente
 
 ```powershell
-python KankeiEngine.py
+python AffektEngine.py
 ```
 
 Salida esperada (resumida):
 
 ```
-Kankei Engine initialized successfully
+Affekt Engine initialized successfully
 ...
 === Engine Results ===
 Action 1: NPC_0 - 'greet the NPC'
@@ -114,7 +114,7 @@ Neo4j persistence active: False
 ## Arranque rápido con Gemma 4 (demo / servidor)
 
 ```python
-from KankeiEngine import create_engine
+from AffektEngine import create_engine
 
 engine = create_engine()                 # busca el modelo en ./model, CPU
 engine = create_engine(n_gpu_layers=-1)  # en la nube con GPU (llama-cpp-python compilado con CUDA)
@@ -122,11 +122,11 @@ r = engine.process_action("NPC_1", "Hey Marta, how much for a healing potion?")
 print(r["response"], r["intent"], r["mood"])
 ```
 
-- El modelo se busca en este orden: argumento `model_path=`, variable de entorno `KANKEI_MODEL`,
+- El modelo se busca en este orden: argumento `model_path=`, variable de entorno `AFFEKT_MODEL`,
   y `./model/**/gemma-4-E2B-it-Q4_0.gguf` (o cualquier `gemma-4*.gguf` de más de 500 MB, para
   ignorar descargas cortadas). Si no hay modelo, lanza un error claro en vez de responder con
   frases enlatadas.
-- Capas en GPU: argumento `n_gpu_layers=` o variable `KANKEI_GPU_LAYERS`.
+- Capas en GPU: argumento `n_gpu_layers=` o variable `AFFEKT_GPU_LAYERS`.
 - Configuración medida como la mejor: 2 ejemplos por llamada tomados de 5 conjuntos fijos por
   ánimo (el comienzo del prompt se repite y `llama.cpp` lo reutiliza), temperatura 0.5,
   `top_p` 0.9, `top_k` 40, y el precio pedido explícitamente en compras y regateos.
@@ -182,9 +182,9 @@ para ejecutar las pruebas. Para persistir el grafo a una instancia Neo4j:
 3. Instancia el motor con la conexión habilitada:
 
    ```python
-   from KankeiEngine import KankeiEngine
+   from AffektEngine import AffektEngine
 
-   engine = KankeiEngine(
+   engine = AffektEngine(
        neo4j_uri="bolt://localhost:7687",
        neo4j_user="neo4j",
        neo4j_password="password",

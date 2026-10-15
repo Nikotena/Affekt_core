@@ -91,7 +91,7 @@ def _commerce(action: str) -> bool:
 
 
 def make_payload(sc: Scenario) -> List[str]:
-    """Payload lines in the same order and wording as KankeiEngine.build_payload."""
+    """Payload lines in the same order and wording as AffektEngine.build_payload."""
     lines = ["World: Tavern", f"NPC: {sc.name}", f"You are {sc.name}, the {sc.role}.",
              f"You are at the {sc.place}."]
     if sc.knows_player:

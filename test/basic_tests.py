@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Basic Test Interface for Kankei Engine
+Basic Test Interface for Affekt Engine
 Implements the MVP requirement: Basic test interface
 """
 
@@ -12,15 +12,15 @@ from typing import Dict, List
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from KankeiEngine import KankeiEngine
+from AffektEngine import AffektEngine
 
 def run_basic_tests():
     """Run basic functionality tests"""
-    print("=== Kankei Engine Basic Tests ===\n")
+    print("=== Affekt Engine Basic Tests ===\n")
     
     # Test 1: Engine initialization
     try:
-        engine = KankeiEngine()
+        engine = AffektEngine()
         engine.initialize_modules()
         print("[PASS] Test 1: Engine initialized")
     except Exception as e:
@@ -102,13 +102,13 @@ def run_basic_tests():
     return True
 
 def main():
-    parser = argparse.ArgumentParser(description="Kankei Engine Basic Test Interface")
+    parser = argparse.ArgumentParser(description="Affekt Engine Basic Test Interface")
     parser.add_argument("--actions", type=int, default=20, help="Number of actions to process")
     args = parser.parse_args()
     
     if run_basic_tests():
         print(f"\nRunning {args.actions} actions...")
-        engine = KankeiEngine()
+        engine = AffektEngine()
         engine.initialize_modules()
         engine.running = True
         results = engine.run(args.actions)

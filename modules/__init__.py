@@ -1,1 +1,1 @@
-"""Modules for Kankei Engine"""
+"""Modules for Affekt Engine"""

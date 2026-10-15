@@ -5,7 +5,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from KankeiEngine import KankeiEngine
+from AffektEngine import AffektEngine
 from modules.ContextFunction import ContextFunction
 from modules.GraphDatabase import GraphDatabase
 from modules.LLMLayer import build_messages, clean_output, narrate_action
@@ -14,7 +14,7 @@ from modules.VectorialPersonality import VectorialPersonality, CHOLERIC
 
 
 def make_engine():
-    e = KankeiEngine()
+    e = AffektEngine()
     e.initialize_modules()
     e.running = True
     return e
@@ -152,7 +152,7 @@ class EngineTests(unittest.TestCase):
         class Boom:
             def generate(self, payload, action):
                 raise RuntimeError("down")
-        e = KankeiEngine(llm=Boom())
+        e = AffektEngine(llm=Boom())
         e.initialize_modules()
         e.running = True
         r = e.process_action("NPC_1", "buy a potion")

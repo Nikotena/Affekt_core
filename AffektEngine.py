@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Kankei Engine - Main Engine Controller
+Affekt Engine - Main Engine Controller
 Coordinates all modules and implements the 80/20 architecture
 """
 
@@ -17,7 +17,7 @@ from modules.IntentParser import IntentParser, is_commerce
 from modules.LLMLayer import (LLMBackend, LlamaCppBackend, StubBackend, FALLBACK_LINES, style_for,
                               set_example_variants)
 
-class KankeiEngine:
+class AffektEngine:
     def __init__(self, neo4j_uri: str = "bolt://localhost:7687",
                  neo4j_user: str = "neo4j",
                  neo4j_password: str = "password",
@@ -81,7 +81,7 @@ class KankeiEngine:
             "time_of_day": "evening"
         })
         
-        print("Kankei Engine initialized successfully")
+        print("Affekt Engine initialized successfully")
     
     @property
     def personality(self) -> VectorialPersonality:
@@ -319,8 +319,8 @@ class KankeiEngine:
 # One-call setup for the demo / cloud server
 # ----------------------------------------------------------------------------------
 ROOT = os.path.dirname(os.path.abspath(__file__))
-MODEL_ENV = "KANKEI_MODEL"            # path to the .gguf, overrides the default search
-GPU_LAYERS_ENV = "KANKEI_GPU_LAYERS"  # layers on the GPU; -1 = all (needs a CUDA build of llama-cpp-python)
+MODEL_ENV = "AFFEKT_MODEL"            # path to the .gguf, overrides the default search
+GPU_LAYERS_ENV = "AFFEKT_GPU_LAYERS"  # layers on the GPU; -1 = all (needs a CUDA build of llama-cpp-python)
 DEFAULT_MODEL_GLOBS = (
     "model/gemma-4-E2B-it-Q4_0.gguf", "model/*/gemma-4-E2B-it-Q4_0.gguf",   # preferred (see docs)
     "model/gemma-4*.gguf", "model/*/gemma-4*.gguf",
@@ -328,7 +328,7 @@ DEFAULT_MODEL_GLOBS = (
 
 
 def find_default_model() -> Optional[str]:
-    """The Gemma 4 file the demo should use: $KANKEI_MODEL, else the newest-quality match in ./model."""
+    """The Gemma 4 file the demo should use: $AFFEKT_MODEL, else the newest-quality match in ./model."""
     env = os.environ.get(MODEL_ENV)
     if env:
         return env
@@ -342,7 +342,7 @@ def find_default_model() -> Optional[str]:
 def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] = None,
                   n_threads: Optional[int] = None, cache_mb: int = 512, n_ctx: int = 2048,
                   llm: Optional[LLMBackend] = None, warm_up: bool = False,
-                  use_amd_api: bool = False, **engine_kwargs) -> "KankeiEngine":
+                  use_amd_api: bool = False, **engine_kwargs) -> "AffektEngine":
     """Build a ready-to-use engine with the configuration measured best for Gemma 4:
 
     two few-shot examples drawn from 5 fixed sets per mood (the prompt prefix repeats, so the
@@ -359,7 +359,7 @@ def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] 
     (key AMD_API_KEY in the environment or .env); no GGUF file is needed.
 
     Pass `llm=` to inject any backend (tests use StubBackend). Extra keyword arguments go to
-    KankeiEngine (e.g. connect_neo4j=True). Raises instead of silently falling back to canned
+    AffektEngine (e.g. connect_neo4j=True). Raises instead of silently falling back to canned
     lines, so a wrong path is noticed before the demo.
     """
     if llm is None and use_amd_api:
@@ -380,7 +380,7 @@ def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] 
                               temperature=0.5, top_p=0.9, top_k=40, prompt_cache_mb=cache_mb)
         llm.shots = 2
         set_example_variants(5)
-    engine = KankeiEngine(llm=llm, **engine_kwargs)
+    engine = AffektEngine(llm=llm, **engine_kwargs)
     engine.initialize_modules()
     engine.running = True
     if warm_up:
@@ -390,7 +390,7 @@ def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] 
 
 def main():
     """Main entry point"""
-    engine = KankeiEngine()
+    engine = AffektEngine()
     engine.initialize_modules()
     engine.running = True
     
