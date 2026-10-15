@@ -1,0 +1,252 @@
+[
+ {
+  "text": "Hahahahaha, that's funny.",
+  "intent": "compliment",
+  "valence": 1
+ },
+ {
+  "text": "If you go to the northern cave, bring fire, those giant rats hate light.",
+  "intent": "offer_help",
+  "valence": 1
+ },
+ {
+  "text": "I feel like I got stuck for some reason...",
+  "intent": "complain",
+  "valence": -1
+ },
+ {
+  "text": "Bring out more boar meat, the guild is paying tonight!",
+  "intent": "buy",
+  "valence": 0
+ },
+ {
+  "text": "I'm selling this legendary sword because I found a club with more POWER!",
+  "intent": "sell",
+  "valence": 0
+ },
+ {
+  "text": "If I keep jumping instead of walking, will I get to the next town faster?",
+  "intent": "ask",
+  "valence": 0
+ },
+ {
+  "text": "Good God, is anyone actually working here or what?",
+  "intent": "complain",
+  "valence": -1
+ },
+ {
+  "text": "How is life treating you?",
+  "intent": "ask",
+  "valence": 0
+ },
+ {
+  "text": "Hey [NPC_name], why didn't you show up on Monday?",
+  "intent": "ask",
+  "valence": 0
+ },
+ {
+  "text": "During the holiday season there are beach parties. I love the idea of going, even though lust gets the better of me sometimes.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Hey, your town is nice, shame everyone here wants to kill me.",
+  "intent": "compliment",
+  "valence": 1
+ },
+ {
+  "text": "Tell me you sell actual food because I've been eating wild berries for three straight days.",
+  "intent": "buy",
+  "valence": 0
+ },
+ {
+  "text": "Show me what you got for sale, but don't you dare rip me off with the prices.",
+  "intent": "buy",
+  "valence": 0
+ },
+ {
+  "text": "What's this \"High quality national cheese for enthusiasts\"? They don't know what to invent next to sell stuff.",
+  "intent": "complain",
+  "valence": -1
+ },
+ {
+  "text": "Hell yeah.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Hey shopkeeper, why doesn't your place even have a roof? So if it rains your whole shop gets soaked or what?",
+  "intent": "complain",
+  "valence": 0
+ },
+ {
+  "text": "Yeah, that's how I killed the devil on the hill.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Why are you talking to me like we've known each other forever?",
+  "intent": "ask",
+  "valence": 0
+ },
+ {
+  "text": "Man, those guys are taking the fucking piss. How the hell are they gonna sell you something like that for that price?",
+  "intent": "complain",
+  "valence": -1
+ },
+ {
+  "text": "I'm looking for a place to relax. I'm completely exhausted.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Tell you what? For a 'Legendary Warrior', you look pretty beat up and rusty, for real.",
+  "intent": "insult",
+  "valence": -1
+ },
+ {
+  "text": "The black goblin is very aggressive, I know.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Hey, can you send the messenger to let the neighboring kingdom know that there are job shortages?",
+  "intent": "ask_help",
+  "valence": 0
+ },
+ {
+  "text": "Don't look at me like that, I'm just entering your house to rob you, what's wrong with that?",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Don't trust cheap potions from traveling merchants, they're just colored water.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Holy shit! What the hell happened to this town? Looks like a fucking dragon tornado hit it.",
+  "intent": "complain",
+  "valence": 0
+ },
+ {
+  "text": "Dude, what are you doing?",
+  "intent": "ask",
+  "valence": 0
+ },
+ {
+  "text": "I feel like the passage of time is way too fast.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Listen, dumbass, are you gonna help me or not?",
+  "intent": "insult",
+  "valence": -1
+ },
+ {
+  "text": "Hey, don't stare at the guards by the entrance or they'll start a fight with you.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "And you, what would you say was the most interesting part of the Weekly Chef magazine?",
+  "intent": "ask",
+  "valence": 0
+ },
+ {
+  "text": "It's the fifth time I've resurrected at this same altar, I'm actually getting along with the priest now.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Stop him RIGHT THERE!",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "How the fuck should I know? Why do you think I came with you, dumbass?",
+  "intent": "insult",
+  "valence": -1
+ },
+ {
+  "text": "Get the hell away from the door, you're blocking the way.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Just came back from seeing what fruits they sell at the market, the pears look good for making pie.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "You're cheating, that's not fair, stop cheating, halt!!!",
+  "intent": "complain",
+  "valence": -1
+ },
+ {
+  "text": "Found this weird recipe in some ruins, let's see if the cook knows what to do with it.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Wow, that explains a lot. I knew it.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "If I end up dying in there because of your shitty info, I swear my ghost will come back to haunt your ass every night.",
+  "intent": "threaten",
+  "valence": -1
+ },
+ {
+  "text": "I didn't come to make friends, I came for the loot.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "Today I fought the devil on the hill, I won, but at what cost.",
+  "intent": "complain",
+  "valence": -1
+ },
+ {
+  "text": "I wonder if they'll get pumpkins in next week for the holidays.",
+  "intent": "ask",
+  "valence": 0
+ },
+ {
+  "text": "Is the rumor about a giant monster in the forest true?",
+  "intent": "ask",
+  "valence": 0
+ },
+ {
+  "text": "Be straight with me, is this quest an ambush or is there actually good loot at the end of the dungeon?",
+  "intent": "ask",
+  "valence": 0
+ },
+ {
+  "text": "I can't fucking believe it.",
+  "intent": "complain",
+  "valence": -1
+ },
+ {
+  "text": "Do you have any quest for me? I need fast gold.",
+  "intent": "ask_help",
+  "valence": 0
+ },
+ {
+  "text": "Why did the blacksmith buy 40 dry branches and an old shoe from me for some reason?",
+  "intent": "ask",
+  "valence": 0
+ },
+ {
+  "text": "I like being a messenger, but sometimes it's tough to arrive on time.",
+  "intent": "other",
+  "valence": 0
+ },
+ {
+  "text": "I fell off a two-centimeter step and almost died from the impact.",
+  "intent": "complain",
+  "valence": -1
+ }
+]

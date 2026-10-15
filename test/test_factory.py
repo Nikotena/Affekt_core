@@ -67,7 +67,24 @@ class FactoryTests(unittest.TestCase):
         self.assertIn("nope.gguf", str(cm.exception))
         with mock.patch.object(ke, "find_default_model", return_value=None):
             with self.assertRaisesRegex(FileNotFoundError, "AFFEKT_MODEL"):
-                ke.create_engine()
+                ke.create_engine(use_amd_api=False)
+
+    def test_api_is_chosen_automatically_only_with_a_key(self):
+        from modules.OpenRouterBackend import AMDBackend
+        with mock.patch.dict(os.environ, {"AMD_API_KEY": "rc-test"}):
+            e = ke.create_engine()
+            self.assertIsInstance(e.llm, AMDBackend)
+            self.assertEqual((e.llm.timeout, e.llm.retries), (30.0, 2))
+            with self.assertRaises(FileNotFoundError):  # an explicit local model path wins
+                ke.create_engine(model_path=os.path.join(self.tmp.name, "nope.gguf"))
+
+    def test_api_failure_falls_back_to_canned_line(self):
+        class Down(StubBackend):
+            def generate(self, payload, action):
+                raise RuntimeError("HTTP 503")
+        e = ke.create_engine(llm=Down())
+        r = e.process_action("NPC_1", "attack the NPC!")
+        self.assertTrue(r["response"])
 
     def test_default_model_search(self):
         with mock.patch.dict(os.environ, {ke.MODEL_ENV: "/somewhere/model.gguf"}):

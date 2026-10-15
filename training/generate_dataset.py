@@ -18,6 +18,7 @@ import random
 import sys
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -89,7 +90,8 @@ def make_teacher(args):
                      "license/terms that allow training on this model's outputs (check its model card).")
         cls, default = (AMDBackend, AMD_DEFAULT_MODEL) if args.teacher == "amd" else (OpenRouterBackend, DEFAULT_MODEL)
         model = args.model or default
-        kw = {} if args.min_interval is None else {"min_interval": args.min_interval}
+        kw = {k: v for k, v in (("min_interval", args.min_interval), ("timeout", getattr(args, "timeout", None)))
+              if v is not None}
         return cls(model, temperature=args.temperature, **kw), model
     from modules.LLMLayer import LlamaCppBackend
     model = args.model or DEFAULT_TEACHER
@@ -107,26 +109,39 @@ def cmd_generate(args):
     teacher.shots = args.shots
     set_example_seed(args.seed)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
-    start, failed = time.time(), 0
-    for i, sc in enumerate(todo, 1):
+    start, failed, done_n = time.time(), 0, 0
+
+    def work(sc):
         payload = make_payload(sc)
-        try:
-            reply = teacher.generate(payload, sc.action)
-        except Exception as e:  # keep going on transient errors; the row is retried on the next run
-            if any(code in str(e) for code in ("HTTP 401", "HTTP 402", "HTTP 403")):
-                sys.exit(f"stopping: {e}")
-            failed += 1
-            print(f"  skipped {sc.id}: {str(e)[:120]}", flush=True)
-            if failed >= args.max_failures:
-                sys.exit(f"stopping after {failed} failures")
-            continue
-        row = {**sc.to_dict(), "payload": payload, "reply": reply, "teacher": label}
-        if args.teacher in ("openrouter", "amd"):
-            row["teacher_license"] = args.teacher_license
-        append_jsonl(args.out, row)
-        if i % 10 == 0 or i == len(todo):
-            rate = (time.time() - start) / i
-            print(f"  {i}/{len(todo)}  {rate:.1f}s each, ~{rate * (len(todo) - i) / 60:.0f} min left", flush=True)
+        return sc, payload, teacher.generate(payload, sc.action)
+
+    # Responses are slow (tens of seconds), so several run at once; the backend spaces their
+    # start times so the API's per-minute limit still holds. Only this thread writes the file.
+    pool = ThreadPoolExecutor(max_workers=max(1, args.workers))
+    futures = {pool.submit(work, sc): sc for sc in todo}
+    try:
+        for fut in as_completed(futures):
+            sc = futures[fut]
+            done_n += 1
+            try:
+                _, payload, reply = fut.result()
+            except Exception as e:  # keep going on transient errors; the row is retried on the next run
+                if any(code in str(e) for code in ("HTTP 401", "HTTP 402", "HTTP 403")):
+                    sys.exit(f"stopping: {e}")
+                failed += 1
+                print(f"  skipped {sc.id}: {str(e)[:120]}", flush=True)
+                if failed >= args.max_failures:
+                    sys.exit(f"stopping after {failed} failures")
+                continue
+            row = {**sc.to_dict(), "payload": payload, "reply": reply, "teacher": label}
+            if args.teacher in ("openrouter", "amd"):
+                row["teacher_license"] = args.teacher_license
+            append_jsonl(args.out, row)
+            if done_n % 10 == 0 or done_n == len(todo):
+                rate = (time.time() - start) / done_n
+                print(f"  {done_n}/{len(todo)}  {rate:.1f}s each, ~{rate * (len(todo) - done_n) / 60:.0f} min left", flush=True)
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
 
 def to_sample(row):
@@ -203,6 +218,9 @@ def main():
     g.add_argument("--model", default=None, help="GGUF path (local) or API model id (openrouter / amd)")
     g.add_argument("--teacher-license", default="", help="license/terms allowing training on the outputs (required for openrouter / amd)")
     g.add_argument("--min-interval", type=float, default=None, help="seconds between API calls (default: 3.0 openrouter, 3.2 amd)")
+    g.add_argument("--workers", type=int, default=1,
+                   help="parallel API calls (amd: 4 keeps under ~20 requests/min with ~40 s replies)")
+    g.add_argument("--timeout", type=float, default=None, help="seconds to wait for one API reply (default 120)")
     g.add_argument("--max-failures", type=int, default=20)
     g.add_argument("--temperature", type=float, default=0.7)
     g.add_argument("--shots", type=int, default=3)

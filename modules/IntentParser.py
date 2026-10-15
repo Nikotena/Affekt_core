@@ -95,10 +95,12 @@ _PEACE = _rx(r"\bcome in peace\b", r"\bin peace\b", r"\bmean no harm\b", r"\bno 
 
 # (intent, patterns) in priority order
 RULES = [
+    ("other", _rx(r"^did you know (?:that|the|if)\b")),
     ("attack", _rx(
         r"\bi (?:\w+ ){0,3}?(?:stab|punch|kick|slash|shoot|slap|smash|shove|tackle|club|bash|whack|impale|behead)\b",
         r"\bi (?:draw|unsheathe|swing|raise|brandish) (?:my |the )?(?:sword|axe|blade|dagger|weapon|fist|mace|bow|knife)",
-        r"\bi (?:strike|hit|attack|throw|hurl|lunge|charge)\b(?: \w+){0,5}? (?:at|you|him|her|them|the \w+)",
+        r"\bi (?:strike|hit|attack|throw|hurl|lunge)\b(?: \w+){0,5}? (?:at|you|him|her|them|the \w+)",
+        r"\bi charge (?:at|into|toward|towards|you|him|her|them)\b",
         r"\bswing (?:my )?\w+ at\b",
         r"^(?:attack|fight|hit|strike|kill|stab|punch|kick)\b",
         r"\btaste my (?:blade|steel|fist|wrath|sword)\b", r"^die\b", r"\bprepare to die\b",
@@ -108,10 +110,10 @@ RULES = [
     )),
     ("threaten", _rx(
         r"\bor (?:else|i(?:'ll| will)|you(?:'ll| will))\b",
-        r"\bi(?:'ll| will| am going to|'m going to) (?:kill|burn|hurt|make you|end you|destroy|ruin|find you|break|crush|"
+        r"\bi(?:'ll| will| am going to|'m going to) (?:kill|burn|hurt|make you|end you|destroy|ruin|find you|break|crush|slash|stab|beat|"
         r"hunt|come for|bury|skin|gut|cut)\b",
         r"\byou(?:'d| had| would)? better (?:watch|not|run|be careful|keep|stay|leave|start|pray)\b",
-        r"\bwatch your back\b", r"\bwatch yourself\b",
+        r"\bwatch your back\b", r"\bwatch yourself\b", r"\bwatch (?:what|how) you\b", r"\bif you (?:talk|speak) to me\b",
         r"\b(?:shame|pity) if\b", r"\bwould be a (?:shame|pity)\b", r"\bwouldn't want .{0,30}to (?:happen|burn|break)\b",
         r"\bknow where (?:you|your)\b", r"\bwon't like what\b", r"\bdon't make me\b", r"\blast warning\b",
         r"\byou(?:'ll| will) (?:regret|pay|suffer|lose|be sorry|die)\b", r"\bi(?:'ll| will) find you\b",
@@ -128,7 +130,7 @@ RULES = [
         r"\byou call (?:this|that)\b", r"\btastes? like (?:pig|dirt|mud|garbage|swill|water)\b", r"\bbetter manners\b",
         r"\bno manners\b", r"\bis that the best you\b", r"\bout of my (?:way|sight)\b", r"\bget lost\b",
         r"\bshut (?:up|your mouth)\b", r"\bwhat a (?:joke|waste|disgrace|useless|pathetic)\b",
-        r"\bpeasant\b", r"\bold man\b.*\bbest\b",
+        r"\bpeasant\b", r"\bold man\b.*\bbest\b", r"\b(?:dumb|dense|clueless|weirdo|terrible at)\b",
         r"\bgo to hell\b", r"\bdrop dead\b", r"\brot in\b", r"\bhow dare you\b", r"\byou (?:smell|stink|suck)\b",
         r"\bi(?:'d| would) rather (?:die|starve|rot)\b", r"\bthe best you (?:can|could|have|got|'ve)\b",
         r"\bis that all you\b",
@@ -139,6 +141,12 @@ RULES = [
         r"\bfed up\b", r"\bsick of\b", r"\bso now\b", r"\bor what\?", r"\bwhat'?s (?:wrong with you|your problem)\b",
         r"\bi'?ve been waiting\b", r"\bis anyone (?:actually |even )?(?:working|there|home|listening)\b",
         r"\bunbelievable\b", r"\bi can'?t believe (?:you|this)\b", r"\bseriously\?",
+        r"\b(?:waste|wasting) (?:of )?my time\b", r"\bfor free\b", r"\btook forever\b", r"\bno (?:fucking |freaking )?way\b",
+        r"\bnot (?:giving|paying) me\b", r"\bpay me\b", r"\bcough up\b", r"\byou owe me\b", r"\bout of your mind\b",
+        r"\bwhat do you mean\b", r"\bwhat a (?:bore|drag|mess)\b", r"\btastes? like (?:an? )?(?:old|boot)\b",
+        r"\bdoesn'?t even\b", r"\bnot going (?:very )?well\b", r"\bwaters? down\b", r"\b(?:cheating|got fired|stole)\b",
+        r"\b(?:horrible|awful|miserable|ridiculous|rough)\b", r"\bbastard\b", r"\bshit\b", r"\bfuck\w*",
+        r"^(?:oh )?(?:damn|ugh|argh|crap)\b", r"\bi'?m trying\b",
     )),
     ("ask_help", _rx(
         r"\b(?:help|save|rescue|protect|hide|shelter|guide) me\b", r"\bi need (?:your )?(?:help|a healer|a doctor|a medic|"
@@ -154,7 +162,8 @@ RULES = [
         r"\bi(?:'ll| will| can| could) (?:gladly |happily |easily )?(?:help|fix|repair|carry|handle|deal with|"
         r"take care of|assist|mend|clear|escort|guard)\b",
         r"\bi(?:'d| would) be (?:glad|happy|willing|honored) to\b", r"^(?:help|aid|assist)\b",
-        r"\boffer (?:my )?(?:aid|help|assistance)\b",
+        r"\boffer (?:my )?(?:aid|help|assistance)\b", r"\bwould you like (?:a|an|some|to)\b",
+        r"\bif you need (?:someone|a|an|help)\b",
     )),
     ("haggle", _rx(
         r"\btoo (?:expensive|pricey|high)\b", r"\btoo much (?:for|money|gold|coin)", r"\brobbery\b", r"\brip.?off\b", r"\boverpriced\b",
@@ -163,14 +172,16 @@ RULES = [
         r"\bhow about \d+", r"\bi(?:'ll| will) (?:give|pay|offer) (?:you )?\d+",
     )),
     ("sell", _rx(
-        r"\bto sell\b", r"\bi(?:'ll| will) sell\b", r"\bsell (?!me\b)(?:my|this|these|that|some)\b", r"\bfor sale\b",
+        r"\bto sell\b", r"\bi(?:'ll| will) sell\b", r"\bi(?:'m| am) selling\b", r"\bsell (?!me\b)(?:my|this|these|that|some)\b", r"\bfor sale\b",
         r"\bwould you (?:buy|pay|take)\b", r"\bdo you (?:buy|want to buy)\b", r"\binterested\?",
         r"\binterested in (?:buying|these|this)\b", r"\blooking to (?:sell|trade)\b", r"\btrade my\b",
         r"\bbuy (?:this|these|my) .{0,30}from me\b", r"^sell\b", r"^trade\b", r"\btrade with\b",
     )),
     ("buy", _rx(
-        r"\bbuy\b", r"\bpurchase\b", r"\bi(?:'ll| will) take\b", r"\bsell me\b", r"\bgot any\b",
-        r"\bgive me (?:a|an|the|some|two|three|four|five|\d+)\b",
+        r"\bbuy\b", r"\bpurchase\b",
+        r"\bi(?:'ll| will) take\b(?! (?:the )?(?:job|quest|task|risk|chance|lead|blame|offer|deal|contract|mission|it easy))",
+        r"\bsell me\b", r"\bgot any\b", r"\bhow much do you want for\b", r"\b(?:pour|bring|fetch) me (?:a|an|another|the|some)\b",
+        r"\bgive me (?:a|an|the|some|two|three|four|five|\d+)\b(?! (?:second|moment|minute|sec|break|hand|chance|hint|clue|reason)\b)",
         r"\bi (?:want|need|would like|wish) (?:a|an|the|some|two|three|four|five|\d+)\b",
         r"\bi(?:'d| would) like (?:a|an|the|some|two|three|four|five|\d+)\b", r"\bi need some\b",
         r"\bdo you (?:have|sell|stock|carry)\b(?!.{0,15}\b(?:news|work|rumou?rs?|information|quests?|jobs?)\b)",
@@ -185,18 +196,21 @@ RULES = [
     ("compliment", _rx(
         r"\b(?:thank you|thanks|grateful|appreciate|well done|admire|bless you|you saved|kindness|good job|great job)\b",
         r"\byou(?:'re| are) (?:amazing|wonderful|great|the best|brave|kind|generous)\b",
+        r"\byou(?:'re| are) (?:goddamn |damn |absolutely |totally )?right\b", r"\btop quality\b", r"\bnow we'?re talking\b",
+        r"\bclean as\b",
     )),
     ("greet", _rx(
         r"^(?:hi|hello|hey|yo|greetings|howdy|salutations|hail|good (?:morning|evening|day|afternoon)|morning|"
         r"evening|afternoon|well met)\b",
-        r"\b(?:hello|greetings|howdy)\b", r"^greet\b", r"\bgreet the\b",
+        r"\b(?:hello|greetings|howdy)\b", r"\bshout ?out\b", r"^greet\b", r"\bgreet the\b",
         r"\bhow are you\b", r"\bhow's it going\b", r"\bwhat's up\b", r"\bhow do you do\b",
     )),
     ("ask", _rx(
         r"^(?!what an?\b)(?:where|what|who|when|why|how|which|whose|whom)\b",
         r"\b(?:tell me|do you know|did you (?:see|hear)|have you (?:seen|heard)|know anything|any (?:news|rumou?rs?)|"
         r"can you tell|could you tell|i(?:'m| am) (?:looking for|searching for|trying to find)|i wonder)\b",
-        r"^(?:ask|inquire)\b", r"\bsince when\b", r"\bhow come\b", r"\bwhat happened\b",
+        r"^(?:ask|inquire)\b", r"\bexplain\b", r"\bspill it\b", r"\bwanted to ask\b", r"\bi was told you\b",
+        r"\b(?:don'?t you|do you) (?:feel|think)\b", r"\bsince when\b", r"\bhow come\b", r"\bwhat happened\b",
         r"^(?:do|did|does|can|could|will|would|is|are|was|were|have|has|may|should) (?:you|they|he|she|there|it|anyone)\b",
     )),
 ]
@@ -262,6 +276,10 @@ class IntentParser:
                 sub_intent, sub_rule = self._classify(rest[1], rest[1])
                 if sub_intent not in ("other", "greet"):
                     intent, rule = sub_intent, sub_rule
+
+        # SHOUTING ("I'M TRYING!") is venting unless the rules found something more specific
+        if intent == "other" and re.search(r"\b[A-Z]{4,}\b", _PLACEHOLDER.sub(" ", raw_clean)):
+            intent, rule = "complain", "shouting"
 
         offer = self._offer(cleaned)
         if intent == "buy" and offer is not None:

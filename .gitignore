@@ -9,3 +9,5 @@ data/
 .env.*
 !.env.example
 text.txt
+
+!test/data/

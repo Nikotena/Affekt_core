@@ -13,6 +13,7 @@ from modules.VectorialPersonality import VectorialPersonality
 from modules.MemorySet import MemorySet
 from modules.ContextFunction import ContextFunction
 from modules.GraphDatabase import GraphDatabase
+from modules.IntentLLM import refine as refine_intent
 from modules.IntentParser import IntentParser, is_commerce
 from modules.LLMLayer import (LLMBackend, LlamaCppBackend, StubBackend, FALLBACK_LINES, style_for,
                               set_example_variants)
@@ -22,9 +23,12 @@ class AffektEngine:
                  neo4j_user: str = "neo4j",
                  neo4j_password: str = "password",
                  connect_neo4j: bool = False,
-                 llm: Optional[LLMBackend] = None):
+                 llm: Optional[LLMBackend] = None, intent_llm=None):
         # Core modules (80/20 architecture: 80% deterministic, 20% AI)
         self.llm: LLMBackend = llm or StubBackend()
+        # Optional model (anything with .complete(messages)) that resolves lines the rules call
+        # "other". Off by default: it costs one extra API call per ambiguous line.
+        self.intent_llm = intent_llm
         self.personalities: Dict[str, VectorialPersonality] = {}
         self.parser = IntentParser()
         self._last_reply: Dict[str, str] = {}
@@ -168,6 +172,8 @@ class AffektEngine:
         # Step 1: Vectorial Personality calculation (per NPC)
         personality = self.personality_for(npc_id)
         parsed = self.parser.parse(action, names=self.names_for(npc_id))
+        if self.intent_llm is not None:
+            parsed = refine_intent(parsed, self.intent_llm)
         text = parsed.clean or action  # what the player said without addressing the NPC by name
         action_delta = list(parsed.delta)
         personality.update_from_action(action_delta)
@@ -342,7 +348,7 @@ def find_default_model() -> Optional[str]:
 def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] = None,
                   n_threads: Optional[int] = None, cache_mb: int = 512, n_ctx: int = 2048,
                   llm: Optional[LLMBackend] = None, warm_up: bool = False,
-                  use_amd_api: bool = False, **engine_kwargs) -> "AffektEngine":
+                  use_amd_api: Optional[bool] = None, llm_intents: bool = False, **engine_kwargs) -> "AffektEngine":
     """Build a ready-to-use engine with the configuration measured best for Gemma 4:
 
     two few-shot examples drawn from 5 fixed sets per mood (the prompt prefix repeats, so the
@@ -355,16 +361,25 @@ def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] 
     `warm_up=True` reads every prompt prefix once at startup (about a minute on CPU, seconds on a
     GPU) so the first players do not pay for filling the cache; recommended for the server.
 
-    `use_amd_api=True` skips the local model and calls Gemma-4-31B-IT on the AMD Token Factory API
-    (key AMD_API_KEY in the environment or .env); no GGUF file is needed.
+    `use_amd_api` picks the language model: True calls Gemma-4-31B-IT on the AMD Token Factory API
+    (key AMD_API_KEY in the environment or .env, no GGUF file needed), False uses the local GGUF.
+    Left as None it uses the API when no `model_path` is given and a key is available, else local.
+    The API backend gives up quickly (30 s, 2 retries) so a slow turn falls back to the engine's
+    canned line for the mood instead of freezing the game.
+
+    `llm_intents=True` also lets the AMD API model classify lines the rule parser calls "other"
+    (+10 points on held-out lines, one extra call per such line). Off by default.
 
     Pass `llm=` to inject any backend (tests use StubBackend). Extra keyword arguments go to
     AffektEngine (e.g. connect_neo4j=True). Raises instead of silently falling back to canned
     lines, so a wrong path is noticed before the demo.
     """
+    if llm is None and use_amd_api is None and model_path is None:
+        from modules.OpenRouterBackend import AMD_KEY_NAME, load_key
+        use_amd_api = bool(load_key(key_name=AMD_KEY_NAME))
     if llm is None and use_amd_api:
         from modules.OpenRouterBackend import AMDBackend
-        llm = AMDBackend(temperature=0.5)
+        llm = AMDBackend(temperature=0.5, timeout=30.0, retries=2)
         llm.shots = 2
         set_example_variants(5)
     if llm is None:
@@ -380,7 +395,14 @@ def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] 
                               temperature=0.5, top_p=0.9, top_k=40, prompt_cache_mb=cache_mb)
         llm.shots = 2
         set_example_variants(5)
-    engine = AffektEngine(llm=llm, **engine_kwargs)
+    intent_llm = None
+    if llm_intents:
+        if hasattr(llm, "complete"):
+            intent_llm = llm
+        else:
+            from modules.OpenRouterBackend import AMDBackend
+            intent_llm = AMDBackend(temperature=0.0, timeout=30.0, retries=2)
+    engine = AffektEngine(llm=llm, intent_llm=intent_llm, **engine_kwargs)
     engine.initialize_modules()
     engine.running = True
     if warm_up:

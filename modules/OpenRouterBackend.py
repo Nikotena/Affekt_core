@@ -132,11 +132,16 @@ class OpenRouterBackend(LLMBackend):
 
     # -- generation -------------------------------------------------------
     def generate(self, payload: List[str], action: str) -> str:
+        return clean_output(self.complete(build_messages(payload, action, no_think=False, shots=self.shots)))
+
+    def complete(self, messages: List[Dict], max_tokens: Optional[int] = None,
+                 temperature: Optional[float] = None) -> str:
+        """Raw chat completion: the model's text for any messages (no NPC prompt, no cleaning)."""
         body = {
             "model": self.model,
-            "messages": build_messages(payload, action, no_think=False, shots=self.shots),
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
+            "messages": messages,
+            "temperature": self.temperature if temperature is None else temperature,
+            "max_tokens": max_tokens or self.max_tokens,
         }
         if self.disable_reasoning:
             body["reasoning"] = {"enabled": False}
@@ -153,7 +158,7 @@ class OpenRouterBackend(LLMBackend):
             text = data["choices"][0]["message"].get("content") or ""
         except (KeyError, IndexError, TypeError):
             raise OpenRouterError(f"unexpected response: {str(data)[:200]}") from None
-        return clean_output(text)
+        return text
 
 
 # -- AMD Token Factory (AMD Radeon Cloud, OpenAI-compatible, free shared endpoints) ----------

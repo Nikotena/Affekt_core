@@ -1,218 +1,157 @@
 # Affekt Core
 
-Motor narrativo para videojuegos construido bajo una **filosofía 80/20**: 80% lógica determinista, 20% inteligencia artificial. El núcleo determinista simula la emoción, memoria y contexto de escena de los NPC; un micro-LLM local (AMD Ryzen AI / ROCm) se reserva como capa de refinamiento que convierte el estado estructurado en lenguaje natural.
+A narrative engine that gives game NPCs emotion, memory and context, so they answer players in
+character without losing track of the world.
 
-## Módulos
+Affekt follows an **80/20 split**: 80% deterministic logic, 20% language model. Plain code
+decides what the NPC feels, remembers and knows; the model only phrases the final line. The model
+never changes game state, so NPCs can't invent prices, items or relationships.
 
-| Módulo | Archivo | Responsabilidad |
-|--------|---------|-----------------|
-| Personalidad Vectorial (4D) | `modules/VectorialPersonality.py` | Física emocional `V = (X, Y, Z, W)` |
-| Memoria (Memory Set) | `modules/MemorySet.py` | Memoria de 3 capas (corto / medio / largo plazo) |
-| Función de Contexto | `modules/ContextFunction.py` | Orquestador de escena + payload estricto para LLM |
-| Gestión Neo4j | `modules/GraphDatabase.py` | Grafo en memoria + persistencia Neo4j opcional |
-| Controlador del Motor | `AffektEngine.py` | Coordina la tubería completa |
+Built for the **AMD Developer Hackathon: ACT III**. The language model is Gemma-4-31B-IT, served on
+AMD GPUs through AMD Token Factory.
 
-## Requisitos
+## Features
 
-- **Python 3.8+** (desarrollado y probado en Python 3.12)
-- No se requieren dependencias de terceros. El driver `neo4j` es **opcional** — si no está instalado, el grafo funciona solo en memoria.
+- **4D emotional state per NPC** (valence, initiative, stress, inertia) that decides the NPC's mood.
+- **Three-layer memory** (short, medium, long term) with importance-based consolidation and forgetting.
+- **World graph** of NPCs, places, items and events, in memory or persisted to Neo4j.
+- **Free-text understanding**: a rule-based parser reads the player's intent, tone, offered price and item;
+  an optional model resolves ambiguous lines.
+- **Graceful fallback**: if the model is unreachable, NPCs answer with deterministic lines for their mood.
+- **Standard library only** for the engine, the tests and the AMD API client.
 
-Verifica tu instalación de Python:
+## Try it
 
-```powershell
-python --version
-```
+Requires Python 3.9 or newer. No packages to install.
 
----
-
-## Cómo Probar — Paso a Paso
-
-### Paso 1: Abre una terminal en la carpeta del proyecto
+**1. Run the tests**
 
 ```powershell
-cd D:\Kankei\Kankei_core
+python -m unittest discover -s test
 ```
 
-> En PowerShell 5.1, **no uses `&&`** para encadenar comandos. Usa `;` en su lugar.
+**2. Chat with the NPCs**
 
-### Paso 2: Ejecuta la suite completa de pruebas
-
-Esto ejecuta 6 pruebas independientes (cableado del motor, matemáticas de personalidad, memoria, contexto, grafo, tubería completa) y luego una simulación de 20 acciones con métricas.
+Offline, with no model (NPCs answer with canned lines):
 
 ```powershell
-python test\basic_tests.py
+python demo.py --offline
 ```
 
-### Paso 2b: Ejecuta las pruebas unitarias (comportamiento)
+With Gemma-4-31B-IT on AMD hardware: create a `.env` file in the project root with your AMD Token
+Factory key (the file is git-ignored), then run the demo without flags.
+
+```
+AMD_API_KEY=rc-...
+```
 
 ```powershell
-python -m unittest discover -s test -v
+python demo.py
 ```
 
-### Paso 3: Ejecuta la demo del motor directamente
-
-```powershell
-python AffektEngine.py
+```
+you> Hey Marta, how much for a healing potion?
+Marta [neutral, buy]> ...
+you> /npc kael
+you> I draw my sword and attack you!
+Kael [hostile, attack]> ...
 ```
 
-Salida esperada (resumida):
+Commands: `/npc <name>` switches NPC, `/who` lists them, `/quit` exits.
 
-```
-Affekt Engine initialized successfully
-...
-=== Engine Results ===
-Action 1: NPC_0 - 'greet the NPC'
-  Payload size: 2 tokens
-  Graph subgraph: 4 nodes, 5 edges
-  Memory event persisted: event_NPC_0_1
-...
-In-memory graph: 27 nodes
-Neo4j persistence active: False
-
-Engine shutdown complete.
-```
-
-### Paso 4: Ejecuta con un número personalizado de acciones
-
-```powershell
-python test\basic_tests.py --actions 50
-```
-
----
-
-## Qué Verifica Cada Prueba
-
-| Prueba | Verifica |
-|--------|-----------|
-| Test 1 | El motor arranca y todos los módulos están conectados |
-| Test 2 | El vector de personalidad 4D se actualiza y se mantiene en rangos válidos |
-| Test 3 | El buffer circular de memoria corta almacena/recupera por NPC aislado |
-| Test 4 | La detección de triggers dispara por palabras clave y construye un payload para LLM |
-| Test 5 | Nodos/aristas del grafo, búsqueda de vecinos, recorrido de subgrafo, exportación Cypher |
-| Test 6 | La tubería completa de acción produce respuestas + eventos del grafo |
-
-La suite debe terminar con:
-
-```
-=== All Basic Tests Passed ===
-```
-
-y un bloque de métricas:
-
-```
-=== Engine Metrics ===
-Total actions: 20
-Average payload size: ~10 lines
-Max payload size: ~14 lines
-Memory events persisted: 16
-Graph nodes: 27
-Neo4j persistence active: False
-```
-
----
-
-## Arranque rápido con Gemma 4 (demo / servidor)
+## Use it in your code
 
 ```python
 from AffektEngine import create_engine
 
-engine = create_engine()                 # busca el modelo en ./model, CPU
-engine = create_engine(n_gpu_layers=-1)  # en la nube con GPU (llama-cpp-python compilado con CUDA)
+engine = create_engine()   # uses the AMD API when AMD_API_KEY is set
 r = engine.process_action("NPC_1", "Hey Marta, how much for a healing potion?")
 print(r["response"], r["intent"], r["mood"])
 ```
 
-- El modelo se busca en este orden: argumento `model_path=`, variable de entorno `AFFEKT_MODEL`,
-  y `./model/**/gemma-4-E2B-it-Q4_0.gguf` (o cualquier `gemma-4*.gguf` de más de 500 MB, para
-  ignorar descargas cortadas). Si no hay modelo, lanza un error claro en vez de responder con
-  frases enlatadas.
-- Capas en GPU: argumento `n_gpu_layers=` o variable `AFFEKT_GPU_LAYERS`.
-- Configuración medida como la mejor: 2 ejemplos por llamada tomados de 5 conjuntos fijos por
-  ánimo (el comienzo del prompt se repite y `llama.cpp` lo reutiliza), temperatura 0.5,
-  `top_p` 0.9, `top_k` 40, y el precio pedido explícitamente en compras y regateos.
-- `create_engine(llm=StubBackend())` crea el motor sin modelo (pruebas).
-- El primer turno de cada combinación (ánimo, conjunto de ejemplos) es más lento mientras se
-  llena la caché. `create_engine(warm_up=True)` la llena al arrancar (19 prefijos, unos 90 s en
-  CPU, segundos con GPU; la caché ocupa ~80 MB) y baja el turno medio de 5.7 s a 3.7 s en CPU.
-  Recomendado en el servidor.
+`process_action` returns a dict with:
 
-## Texto libre del jugador
+| Key | Meaning |
+|---|---|
+| `response` | The NPC's line |
+| `mood` | `friendly`, `neutral`, `tense` or `hostile` |
+| `intent`, `offer`, `addressed` | What the parser understood, a price offered, and the NPC name the player used |
+| `llm_used` | Whether the model phrased the line or a deterministic line was used |
+| `payload` | The exact facts the model was given |
+| `memory_event`, `graph_nodes`, `graph_edges` | Memory stored and graph neighbourhood used |
 
-El motor entiende lo que el jugador escribe con `modules/IntentParser.py`, un analizador por
-reglas (sin modelo, determinista). Devuelve la intención (saludo, pregunta, compra, regateo,
-elogio, insulto, queja, amenaza, ataque...), cuánto cambia el ánimo del NPC, el precio
-ofrecido y el objeto mencionado.
-
-- El jugador puede dirigirse al NPC por su nombre o por un apodo (`Hey Marta, ...`,
-  `[NPC_Name]`); el nombre se ignora para entender la frase. Apodos nuevos:
-  `engine.add_alias("NPC_1", "Big M")`.
-- Medir cuánto acierta con frases reales: escribe una frase por línea en un `.txt` y
-
-  ```powershell
-  python test\review_lines.py text.txt --out lines_review.csv
-  ```
-
-  Abre el CSV y rellena `fix_intent` (y `fix_valence`: -1, 0 o 1) **solo en las filas que
-  el analizador falló**. Después:
-
-  ```powershell
-  python test\review_lines.py --score lines_review.csv --save-labels labels.json
-  ```
-
-  Muestra el acierto, qué reglas causan los errores y las confusiones más frecuentes.
-- Bancos de prueba: `python test\eval_intent.py --set dev|heldout|stress|user|all --errors`.
-
-## Activar la Persistencia Neo4j (Opcional)
-
-Por defecto el grafo es **solo en memoria**, que es todo lo necesario
-para ejecutar las pruebas. Para persistir el grafo a una instancia Neo4j:
-
-1. Instala el driver:
-
-   ```powershell
-   pip install neo4j
-   ```
-
-2. Inicia una instancia de Neo4j (o usa Neo4j Desktop / Docker):
-
-   ```powershell
-   docker run -d --name neo4j -p 7687:7687 -p 7474:7474 -e NEO4J_AUTH=neo4j/password neo4j:5
-   ```
-
-3. Instancia el motor con la conexión habilitada:
-
-   ```python
-   from AffektEngine import AffektEngine
-
-   engine = AffektEngine(
-       neo4j_uri="bolt://localhost:7687",
-       neo4j_user="neo4j",
-       neo4j_password="password",
-       connect_neo4j=True,
-   )
-   engine.initialize_modules()
-   engine.running = True
-   engine.run(20)
-   engine.shutdown()   # sincroniza el grafo de vuelta a Neo4j
-   ```
-
-`engine.graph.is_persistent()` devuelve `True` cuando hay una conexión activa.
-
-## Exportación Offline del Grafo
-
-Puedes volcar todo el grafo como un lote de instrucciones Cypher para análisis offline:
+### Options
 
 ```python
-engine.save_snapshot("world.cypher")
+create_engine(use_amd_api=True)             # force the AMD API
+create_engine(model_path="model/x.gguf")    # use a local GGUF model (needs llama-cpp-python)
+create_engine(llm=StubBackend())            # no model at all, for tests
+create_engine(llm_intents=True)             # let the model label lines the rules don't understand
+engine.add_alias("NPC_1", "Big M")          # a nickname the player may use for an NPC
 ```
 
----
+With no `model_path`, the AMD API is used when `AMD_API_KEY` is available (environment or `.env`).
+API calls give up after 30 s and 2 retries, and the engine falls back to a canned line for the NPC's mood.
 
-## Solución de Problemas
+`llm_intents` is off by default. It adds one API call for each line the rules can't classify and
+raised intent accuracy on 50 held-out lines from 54% to 64%.
 
-| Síntoma | Causa / Solución |
-|---------|------------------|
-| `python : The token '&&' is not a valid statement separator` | Estás en PowerShell 5.1. Usa `;` para encadenar comandos. |
-| `ModuleNotFoundError: No module named 'neo4j'` | Esperado a menos que hayas optado por persistencia Neo4j. El motor funciona en memoria; instala el driver solo para persistencia. |
-| `ModuleNotFoundError: No module named 'modules'` | Ejecuta los comandos desde `D:\Kankei\Kankei_core` (el archivo de pruebas ya agrega la ruta). |
-| Errores de Unicode/emoji en la consola | La suite de pruebas usa marcadores ASCII `[PASS]` / `[FAIL]` para evitar problemas de códec en Windows. |
+### AMD Token Factory notes
+
+- Endpoint: `https://developer.amd.com.cn/radeon/api/v1` (OpenAI-compatible), model `Gemma-4-31B-IT`.
+- A team shares one key and its limits: about 20 requests per minute and 8 concurrent. Replies can
+  take from a few seconds to under a minute depending on load.
+- The service is for trial and development, with no SLA. Don't commit the key.
+
+## Tests and benchmarks
+
+| Command | What it does |
+|---|---|
+| `python -m unittest discover -s test` | Unit tests (no network, no model) |
+| `python test\basic_tests.py` | Wiring checks plus a 20-action simulation with metrics |
+| `python test\eval_intent.py --set all` | Intent accuracy of the rules on 179 test lines |
+| `python test\eval_labeled.py [--llm] [--reserve]` | Accuracy on 200 hand-labelled lines (150 for tuning, 50 held out) |
+| `python test\eval_llm.py --amd` | Reply quality for the API model (tone, facts, length, variety) |
+| `python test\review_lines.py lines.txt --out review.csv` | Label your own lines and score the parser (`--score` to compute) |
+
+## Optional: Neo4j persistence
+
+```powershell
+pip install neo4j
+docker run -d --name neo4j -p 7687:7687 -p 7474:7474 -e NEO4J_AUTH=neo4j/password neo4j:5
+```
+
+```python
+engine = AffektEngine(neo4j_uri="bolt://localhost:7687", neo4j_user="neo4j",
+                      neo4j_password="password", connect_neo4j=True)
+```
+
+`engine.save_snapshot("world.cypher")` exports the graph as Cypher statements.
+
+## Project structure
+
+```
+AffektEngine.py        engine and create_engine()
+demo.py                terminal chat with the NPCs
+modules/
+  VectorialPersonality.py   4D emotional state and mood
+  MemorySet.py              three-layer memory
+  ContextFunction.py        scene context, triggers and the payload for the model
+  GraphDatabase.py          world graph (in memory, optional Neo4j)
+  IntentParser.py           rule-based reading of player text
+  IntentLLM.py              optional model fallback for ambiguous lines
+  LLMLayer.py               prompts and model backends
+  OpenRouterBackend.py      AMD Token Factory (AMDBackend) and OpenRouter clients
+test/                  unit tests, benchmarks and labelled data
+training/              dataset tools for a future fine-tune of a small local model
+```
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `AMD_API_KEY not found` | Add it to `.env` in the project root, or set it in the environment |
+| `HTTP 429` or slow replies | The team key is rate-limited; the client retries using the server's `Retry-After` |
+| `HTTP 401` / `403` | Wrong or rotated key, or the account is still under review |
+| `No Gemma 4 model found` | You asked for a local model: pass `model_path=` or set `AFFEKT_MODEL` |
+| `ModuleNotFoundError: modules` | Run commands from the project root |

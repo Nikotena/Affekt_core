@@ -230,5 +230,51 @@ class AMDBackendTests(unittest.TestCase):
         self.assertEqual(teacher.min_interval, 3.2)
 
 
+class WorkersTests(unittest.TestCase):
+    def test_threads_get_distinct_spaced_slots(self):
+        import threading
+        starts, lock = [], threading.Lock()
+
+        def sleep(seconds):  # record the reserved delay instead of waiting
+            with lock:
+                starts.append(seconds)
+
+        b = orb.AMDBackend(api_key=KEY, sleep=sleep, min_interval=3.2)
+        threads = [threading.Thread(target=b._wait_for_slot) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        delays = sorted(starts)
+        self.assertEqual(len(delays), 4)  # the first caller starts immediately
+        gaps = [b - a for a, b in zip(delays, delays[1:])]
+        self.assertTrue(all(abs(g - 3.2) < 0.2 for g in gaps), delays)
+
+    def test_generate_with_workers_writes_every_row_once(self):
+        from training import generate_dataset as gd
+
+        class Teacher:
+            shots = 3
+
+            def generate(self, payload, action):
+                return "Fine."
+
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "raw.jsonl")
+            args = argparse.Namespace(n=12, seed=0, out=out, teacher="amd", model=None, teacher_license="x",
+                                      temperature=0.7, min_interval=None, timeout=None, shots=3,
+                                      workers=4, max_failures=5)
+            orig = gd.make_teacher
+            gd.make_teacher = lambda a: (Teacher(), "fake")
+            try:
+                gd.cmd_generate(args)
+                gd.cmd_generate(args)  # second run finds everything done
+            finally:
+                gd.make_teacher = orig
+            ids = [r["id"] for r in gd.read_jsonl(out)]
+            self.assertEqual(len(ids), 12)
+            self.assertEqual(len(set(ids)), 12)
+
+
 if __name__ == "__main__":
     unittest.main()
