@@ -7,8 +7,9 @@ Affekt follows an **80/20 split**: 80% deterministic logic, 20% language model. 
 decides what the NPC feels, remembers and knows; the model only phrases the final line. The model
 never changes game state, so NPCs can't invent prices, items or relationships.
 
-Built for the **AMD Developer Hackathon: ACT III**. The language model is Gemma-4-31B-IT, served on
-AMD GPUs through AMD Token Factory.
+Built for the **AMD Developer Hackathon: ACT III**. The language model is swappable: the default is
+MiMo-V2.6-Flash on AMD GPUs through AMD Token Factory. The measurements in `docs/` were taken earlier with
+Gemma-4-31B-IT on the same service, which has since left the Token Factory catalog (see [docs/amd.md](docs/amd.md)).
 
 ## Features
 
@@ -48,7 +49,7 @@ Offline, with no model (NPCs answer with canned lines):
 python demo.py --offline
 ```
 
-With Gemma-4-31B-IT on AMD hardware: create a `.env` file in the project root with your AMD Token
+With MiMo-V2.6-Flash on AMD hardware: create a `.env` file in the project root with your AMD Token
 Factory key (the file is git-ignored), then run the demo without flags.
 
 ```
@@ -109,10 +110,38 @@ raised intent accuracy on 50 held-out lines from 54% to 64%.
 
 ### AMD Token Factory notes
 
-- Endpoint: `https://developer.amd.com.cn/radeon/api/v1` (OpenAI-compatible), model `Gemma-4-31B-IT`.
+- Endpoint: `https://developer.amd.com.cn/radeon/api/v1` (OpenAI-compatible), default model `MiMo-V2.6-Flash` (Gemma-4-31B-IT, used for the measurements in `docs/`, is no longer in the catalog; pick another with `AMDBackend(model=...)`).
 - A team shares one key and its limits: about 20 requests per minute and 8 concurrent. Replies can
   take from a few seconds to under a minute depending on load.
 - The service is for trial and development, with no SLA. Don't commit the key.
+
+## Cost per experience
+
+The design goal is **local first**: a small fine-tuned model running on the player's own machine, so the
+studio pays nothing per player and nothing per line. The hosted API is the option for players without the
+hardware, and what we used to prove the engine works. Status: the local backend exists (`create_engine(model_path=...)`,
+llama.cpp, GGUF) but **no fine-tuned model has been trained yet** and local speed has not been measured
+([docs/finetune_compact.md](docs/finetune_compact.md) is the plan). The numbers below are for the hosted API only.
+
+Estimate, not a measurement. A typical NPC prompt is 170-255 input tokens (708-1023 characters from the demo
+conversations, at about 4 characters per token); the reply is capped at 160 tokens and is usually 1-2 sentences.
+At OpenRouter's list price for `google/gemma-4-31b-it` ($0.20 per million input tokens, $0.40 per million
+output tokens, checked 2026-10-15):
+
+| | Calculation | Cost |
+|---|---|---|
+| One NPC line (typical, about 40 output tokens) | 210 x $0.2/M + 40 x $0.4/M | about $0.00006 |
+| One NPC line (worst case, 160 output tokens) | 255 x $0.2/M + 160 x $0.4/M | about $0.0001 |
+| One 30-line play session | 30 x the worst case | under $0.003 |
+| 1,000 sessions | | about $2-3 |
+
+The engine also skips the model for short filler lines (it answers with a canned line for the mood), so real
+cost is somewhat lower. Prices change; re-check before relying on them. The AMD Token Factory free tier has no
+per-token price but is rate limited (about 20 requests per minute for the whole team).
+
+**Who pays.** Independent game studios that want NPCs with memory without writing branching dialogue. With a local
+model the studio's inference bill is zero; revenue is planned from paid tools, support and a marketplace on top
+of the MIT-licensed core (see `Kankei_Engine/hackathon/Business method.md`).
 
 ## Tests and benchmarks
 

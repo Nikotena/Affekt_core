@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from AffektEngine import AffektEngine
 from tone import matches_tone
 from modules.TextNumbers import normalize_prices
+from modules.ApiBackend import AMD_DEFAULT_MODEL
 from modules.LLMLayer import (DEFAULT_MODEL_PATH, FEW_SHOT, LlamaCppBackend, StubBackend,
                               set_example_seed, set_stable_examples, set_example_variants)
 
@@ -96,8 +97,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--model", default=DEFAULT_MODEL_PATH)
     ap.add_argument("--stub", action="store_true")
-    ap.add_argument("--amd", nargs="?", const="Gemma-4-31B-IT", metavar="MODEL",
-                    help="use the AMD Token Factory API (default Gemma-4-31B-IT; key AMD_API_KEY in .env)")
+    ap.add_argument("--amd", nargs="?", const=AMD_DEFAULT_MODEL, metavar="MODEL",
+                    help="use the AMD Token Factory API (default MiMo-V2.6-Flash; key AMD_API_KEY in .env)")
     ap.add_argument("--temperature", type=float, default=0.4)
     ap.add_argument("--sweep", help="comma-separated temperatures to compare, e.g. 0.3,0.5,0.7")
     ap.add_argument("--repeats", type=int, default=1, help="runs per scenario (reduces sampling noise)")

@@ -65,7 +65,7 @@ def main():
     engine = create_engine(use_amd_api=True) if use_api else create_engine(llm=StubBackend())
     if use_api and args.save:  # a recording should hold real model lines: wait longer than a live game would
         engine.llm.timeout, engine.llm.retries = 120.0, 4
-    print("Model: Gemma-4-31B-IT on AMD Token Factory" if use_api else "Model: none (canned lines)")
+    print(f"Model: {engine.llm.model} on AMD Token Factory" if use_api else "Model: none (canned lines)")
 
     turns = []
     for i, (npc, line, note) in enumerate(SCRIPT, 1):

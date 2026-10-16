@@ -379,7 +379,7 @@ def create_engine(model_path: Optional[str] = None, n_gpu_layers: Optional[int] 
     `warm_up=True` reads every prompt prefix once at startup (about a minute on CPU, seconds on a
     GPU) so the first players do not pay for filling the cache; recommended for the server.
 
-    `use_amd_api` picks the language model: True calls Gemma-4-31B-IT on the AMD Token Factory API
+    `use_amd_api` picks the language model: True calls the default model (MiMo-V2.6-Flash) on the AMD Token Factory API
     (key AMD_API_KEY in the environment or .env, no GGUF file needed), False uses the local GGUF.
     Left as None it uses the API when no `model_path` is given and a key is available, else local.
     The API backend gives up quickly (30 s, 2 retries) so a slow turn falls back to the engine's

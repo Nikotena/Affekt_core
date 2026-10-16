@@ -196,7 +196,7 @@ class AMDBackendTests(unittest.TestCase):
         req = net.requests[0]
         body = json.loads(req.data)
         self.assertEqual(req.full_url, orb.AMD_ENDPOINT)
-        self.assertEqual(body["model"], "Gemma-4-31B-IT")
+        self.assertEqual(body["model"], orb.AMD_DEFAULT_MODEL)
         self.assertNotIn("reasoning", body)  # the gateway answers 400 to reasoning.enabled
         self.assertEqual(body["messages"][0]["role"], "system")
         self.assertNotIn(KEY, repr(b))
@@ -225,7 +225,7 @@ class AMDBackendTests(unittest.TestCase):
         args = argparse.Namespace(teacher="amd", model=None, teacher_license="see model card",
                                   temperature=0.7, min_interval=None)
         teacher, label = make_teacher(args)
-        self.assertEqual(label, "Gemma-4-31B-IT")
+        self.assertEqual(label, orb.AMD_DEFAULT_MODEL)
         self.assertIsInstance(teacher, orb.AMDBackend)
         self.assertEqual(teacher.min_interval, 3.2)
 

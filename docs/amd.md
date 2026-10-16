@@ -1,6 +1,6 @@
 # How Affekt Core uses AMD hardware
 
-Affekt Core is a narrative engine that gives game NPCs emotion, memory, and context. Plain code decides what each NPC feels, remembers, and knows, while a language model only phrases the final line. That language model is **Gemma-4-31B-IT**, served on AMD GPUs through **AMD Token Factory**. 
+Affekt Core is a narrative engine that gives game NPCs emotion, memory, and context. Plain code decides what each NPC feels, remembers, and knows, while a language model only phrases the final line. The default language model is **MiMo-V2.6-Flash**, served on AMD GPUs through **AMD Token Factory**. The measurements in this repository (latency, price checks, intent fallback) were taken earlier with **Gemma-4-31B-IT** on the same service; Gemma has since been removed from the Token Factory catalog (the endpoint answers HTTP 400), so those numbers describe Gemma, not the current default.
 
 The engine calls it through an OpenAI-compatible API to:
 1. Speak every NPC line.
@@ -17,7 +17,7 @@ Because the model only phrases facts that the engine has already selected, promp
 
 | Use | Where in the code | Notes |
 |---|---|---|
-| **NPC dialogue** | `ApiBackend.generate`, used by `create_engine()` | Gemma-4-31B-IT, ~10 fact lines per prompt, 2 few-shot examples |
+| **NPC dialogue** | `ApiBackend.generate`, used by `create_engine()` | MiMo-V2.6-Flash by default (measured with Gemma-4-31B-IT), ~10 fact lines per prompt, 2 few-shot examples |
 | **Intent fallback** | `modules/IntentLLM.py`, `create_engine(llm_intents=True)` | Only called for lines labeled as "other" by rules; off by default |
 | **Dataset teacher** | `training/generate_dataset.py --teacher amd` | Resumable, runs parallel requests; 120 sample rows generated so far |
 
@@ -31,6 +31,22 @@ Because the model only phrases facts that the engine has already selected, promp
 
 - **Latency:** Response times ranged from a few seconds to under a minute depending on server load. During one rehearsal, 2 out of 14 calls timed out and fell back to canned responses. A recorded playback (`demo_run.json`, executed via `python scene.py --replay demo_run.json`) serves as a safety net for live demonstrations.
 - **Rate Limits:** Shared team key limits are approximately 20 requests per minute with a maximum of 8 concurrent requests.
+
+### Choosing the replacement model (2026-10-15)
+
+After Gemma left the catalog, six of its 11 models were tried through the real engine (same NPC prompt,
+2 few-shot examples) on a price question and an insult to Marta. Single runs, not a benchmark:
+
+| Model | Result |
+|---|---|
+| **MiMo-V2.6-Flash** (chosen) | Real model lines in all 6 calls, correct price, about 4-7 s; on the 4-line arc (price, insult, haggle, pay) the lines stayed in character and the price guard returned `ok` each time |
+| DeepSeek-V4.1-Flash | Good lines, 2-14 s |
+| Qwen3.8-27B, Qwen3.8-Flash-Next | One of two replies each fell back to the canned line |
+| GLM-5.3-Flash | Good lines but 27-76 s |
+| MiniCPM5-2B | Leaked its reasoning ("Okay, the user is Marta...") into the reply |
+
+The other catalog models are vision or document models and were not tried. Pick another with
+`AMDBackend(model=...)`; `AFFEKT_AMD_MODEL` does the same in the game's bridge.
 
 ### Future Work / Next Steps
 

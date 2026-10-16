@@ -4,7 +4,7 @@ Hosted-model backends over an OpenAI-compatible chat-completions API.
 ChatAPIBackend holds the shared code (HTTP, retries, rate limiting, key loading). Two concrete
 backends configure it:
 
-    AMDBackend         Gemma-4-31B-IT on AMD GPUs through AMD Token Factory (key AMD_API_KEY)
+    AMDBackend         MiMo-V2.6-Flash (default, any catalog model) on AMD GPUs through AMD Token Factory (key AMD_API_KEY)
     OpenRouterBackend  models on OpenRouter, used as a teacher for dataset generation
                        (key OPENROUTER_API_KEY)
 
@@ -181,15 +181,17 @@ class OpenRouterBackend(ChatAPIBackend):
 
 # -- AMD Token Factory (AMD Radeon Cloud, OpenAI-compatible, free shared endpoints) ----------
 AMD_ENDPOINT = "https://developer.amd.com.cn/radeon/api/v1/chat/completions"
-AMD_DEFAULT_MODEL = "Gemma-4-31B-IT"
+# Gemma-4-31B-IT was the first default but left the Token Factory catalog (the gateway answers HTTP 400).
+# MiMo-V2.6-Flash answered the NPC prompts best of the six chat models tried (see docs/amd.md).
+AMD_DEFAULT_MODEL = "MiMo-V2.6-Flash"
 AMD_KEY_NAME = "AMD_API_KEY"
 
 
 class AMDBackend(ChatAPIBackend):
-    """Gemma-4-31B-IT (or any catalog model) served on AMD GPUs by Token Factory.
+    """MiMo-V2.6-Flash (or any catalog model) served on AMD GPUs by Token Factory.
 
     Same chat-completions protocol as OpenRouter. Differences: the gateway rejects the
-    `reasoning` object with HTTP 400 (Gemma does not think by default, so nothing is sent), and
+    `reasoning` object with HTTP 400 (the default models do not need it, so nothing is sent), and
     the free tier allows ~20 requests/minute per account, hence the 3.2 s default spacing.
     429s honour Retry-After through the inherited retry loop. The key is shared by the whole team.
     """
