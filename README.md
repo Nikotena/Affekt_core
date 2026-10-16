@@ -8,8 +8,8 @@ decides what the NPC feels, remembers and knows; the model only phrases the fina
 never changes game state, so NPCs can't invent prices, items or relationships.
 
 Built for the **AMD Developer Hackathon: ACT III**. The language model is swappable: the default is
-MiMo-V2.6-Flash on AMD GPUs through AMD Token Factory. The measurements in `docs/` were taken earlier with
-Gemma-4-31B-IT on the same service, which has since left the Token Factory catalog (see [docs/amd.md](docs/amd.md)).
+Gemma-4-31B-IT on AMD GPUs through AMD Token Factory, with MiMo-V2.6-Flash (also on AMD) and OpenRouter as backups
+(see [docs/amd.md](docs/amd.md)); the measurements in `docs/` were taken with Gemma-4-31B-IT.
 
 ## Features
 
@@ -18,6 +18,8 @@ Gemma-4-31B-IT on the same service, which has since left the Token Factory catal
 - **World graph** of NPCs, places, items and events, in memory or persisted to Neo4j.
 - **Free-text understanding**: a rule-based parser reads the player's intent, tone, offered price and item;
   an optional model resolves ambiguous lines.
+- **Time of day**: the host passes the player's local hour (`engine.set_time_of_day(hour)`), the payload gets a `Time: morning.` line, and NPCs greet with "Good morning", "Good afternoon" or "Good evening" (late at night they mention it is late). Only greetings are constrained; the rest of the line is still the model's.
+- **Provider failover**: `FailoverBackend` asks Gemma 4 on AMD Token Factory first, then MiMo on AMD, then OpenRouter, when the one before fails or is slow; a failing step is skipped for 45 s. If every provider fails the NPC answers with its canned line.
 - **Graceful fallback**: if the model is unreachable, NPCs answer with deterministic lines for their mood.
 - **Fact guard**: a price in the model's reply that differs from the engine's is replaced before the player sees it.
 - **Standard library only** for the engine, the tests and the AMD API client.
@@ -49,7 +51,7 @@ Offline, with no model (NPCs answer with canned lines):
 python demo.py --offline
 ```
 
-With MiMo-V2.6-Flash on AMD hardware: create a `.env` file in the project root with your AMD Token
+With Gemma-4-31B-IT on AMD hardware: create a `.env` file in the project root with your AMD Token
 Factory key (the file is git-ignored), then run the demo without flags.
 
 ```
@@ -110,7 +112,7 @@ raised intent accuracy on 50 held-out lines from 54% to 64%.
 
 ### AMD Token Factory notes
 
-- Endpoint: `https://developer.amd.com.cn/radeon/api/v1` (OpenAI-compatible), default model `MiMo-V2.6-Flash` (Gemma-4-31B-IT, used for the measurements in `docs/`, is no longer in the catalog; pick another with `AMDBackend(model=...)`).
+- Endpoint: `https://developer.amd.com.cn/radeon/api/v1` (OpenAI-compatible), default model `Gemma-4-31B-IT` (it was off the catalog on 2026-10-15 and is back, but loaded; `MiMo-V2.6-Flash` is the tested alternative; pick another with `AMDBackend(model=...)`).
 - A team shares one key and its limits: about 20 requests per minute and 8 concurrent. Replies can
   take from a few seconds to under a minute depending on load.
 - The service is for trial and development, with no SLA. Don't commit the key.

@@ -25,6 +25,14 @@ NPC_TEMPERAMENTS = {"NPC_0": SANGUINE, "NPC_1": NORMAL, "NPC_2": PHLEGMATIC,
                     "NPC_3": MELANCHOLIC, "NPC_4": CHOLERIC}
 
 
+def part_of_day(hour: float) -> str:
+    """morning 05-12, afternoon 12-18, evening 18-22, night 22-05 (local time)."""
+    h = float(hour) % 24
+    if h < 5 or h >= 22:
+        return "night"
+    return "morning" if h < 12 else "afternoon" if h < 18 else "evening"
+
+
 class AffektEngine:
     def __init__(self, neo4j_uri: str = "bolt://localhost:7687",
                  neo4j_user: str = "neo4j",
@@ -67,7 +75,7 @@ class AffektEngine:
         """Register initial context definitions"""
         # Chapter-based contexts
         self.context.contexts["chapter_start"] = {
-            "description": "Initial chapter setup",
+            "description": "A quiet evening in the town of Affekt",
             "variables": ["chapter", "location", "goal"]
         }
         
@@ -81,13 +89,20 @@ class AffektEngine:
             "variables": ["npc_id", "intent"]
         }
     
+    def set_time_of_day(self, hour: float) -> str:
+        """Tell the engine the player's local hour (0-24). NPCs then know if it is morning, afternoon,
+        evening or night, and greet accordingly. Returns the part of the day."""
+        part = part_of_day(hour)
+        self.context.world_state["part_of_day"] = part
+        return part
+
     def initialize_modules(self):
         """Initialize all modules"""
         self.context.switch_context("chapter_start")
 
         # Initial context setup
         self.context.set_world_state({
-            "location": "Tavern",
+            "location": "Affekt Town",
             "chapter": "Act I",
             "time_of_day": "evening"
         })
@@ -142,7 +157,7 @@ class AffektEngine:
     def _seed_world_graph(self):
         """Populate the in-memory graph with the initial world topology."""
         # Player
-        self.graph.add_node("player_01", "Player", name="Player", location="tavern_01")
+        self.graph.add_node("player_01", "Player", name="Player", location="town_01")
         # NPCs
         self.graph.add_node("NPC_0", "NPC", name="Alan", role="Bartender", current_mood="neutral")
         self.graph.add_node("NPC_1", "NPC", name="Marta", role="Merchant", current_mood="neutral")
@@ -150,8 +165,13 @@ class AffektEngine:
         self.graph.add_node("NPC_3", "NPC", name="Elena", role="Healer", current_mood="neutral")
         self.graph.add_node("NPC_4", "NPC", name="Kael", role="Blacksmith", current_mood="neutral")
         # Locations
-        self.graph.add_node("tavern_01", "Location", name="Tavern", region="Mountain Pass")
-        self.graph.add_node("market_01", "Location", name="Market", region="Mountain Pass")
+        # The world is a town; each NPC works in its own place (the tavern is only Alan's).
+        self.graph.add_node("town_01", "Location", name="Town Square", region="Affekt Town")
+        self.graph.add_node("gate_01", "Location", name="Town Gate", region="Affekt Town")
+        self.graph.add_node("market_01", "Location", name="Market", region="Affekt Town")
+        self.graph.add_node("tavern_01", "Location", name="Tavern", region="Affekt Town")
+        self.graph.add_node("clinic_01", "Location", name="Clinic", region="Affekt Town")
+        self.graph.add_node("forge_01", "Location", name="Forge", region="Affekt Town")
         # Items
         self.graph.add_node("item_potion", "Item", name="Potion", price=25, rarity="common")
         self.graph.add_node("item_sword", "Item", name="Sword", price=100, rarity="uncommon")
@@ -159,10 +179,12 @@ class AffektEngine:
         self.graph.add_node("concept_debt", "Concept", name="Debt", category="social")
         
         # Relationships
-        self.graph.add_edge("player_01", "LOCATED_AT", "tavern_01")
+        self.graph.add_edge("player_01", "LOCATED_AT", "town_01")
         self.graph.add_edge("NPC_0", "LOCATED_AT", "tavern_01")
         self.graph.add_edge("NPC_1", "LOCATED_AT", "market_01")
-        self.graph.add_edge("NPC_2", "LOCATED_AT", "tavern_01")
+        self.graph.add_edge("NPC_2", "LOCATED_AT", "gate_01")
+        self.graph.add_edge("NPC_3", "LOCATED_AT", "clinic_01")
+        self.graph.add_edge("NPC_4", "LOCATED_AT", "forge_01")
         self.graph.add_edge("NPC_0", "KNOWS", "player_01", since="Act I")
         self.graph.add_edge("NPC_1", "OWNS", "item_potion")
         self.graph.add_edge("NPC_2", "OWNS", "item_sword")

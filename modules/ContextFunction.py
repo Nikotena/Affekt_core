@@ -86,6 +86,8 @@ class ContextFunction:
         payload: List[str] = []
         if world:
             payload.append(f"World: {world.get('location', 'unknown')}")
+            if world.get("part_of_day"):  # set by the host from the player's clock (engine.set_time_of_day)
+                payload.append(f"Time: {world['part_of_day']}.")
         payload.append(f"NPC: {npc_id}")
         if self.active_context:
             payload.append(f"Scene: {self.active_context.get('description', self.active_context_id)}")

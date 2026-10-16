@@ -4,7 +4,7 @@ Hosted-model backends over an OpenAI-compatible chat-completions API.
 ChatAPIBackend holds the shared code (HTTP, retries, rate limiting, key loading). Two concrete
 backends configure it:
 
-    AMDBackend         MiMo-V2.6-Flash (default, any catalog model) on AMD GPUs through AMD Token Factory (key AMD_API_KEY)
+    AMDBackend         Gemma-4-31B-IT (default, any catalog model) on AMD GPUs through AMD Token Factory (key AMD_API_KEY)
     OpenRouterBackend  models on OpenRouter, used as a teacher for dataset generation
                        (key OPENROUTER_API_KEY)
 
@@ -174,6 +174,7 @@ class OpenRouterBackend(ChatAPIBackend):
     endpoint = OPENROUTER_ENDPOINT
     key_name = OPENROUTER_KEY_NAME
     title = "Affekt Core dataset generation"
+    provider = "OpenRouter"
 
     def __init__(self, model: str = OPENROUTER_DEFAULT_MODEL, disable_reasoning: bool = True, **kw):
         super().__init__(model, disable_reasoning=disable_reasoning, **kw)
@@ -181,23 +182,94 @@ class OpenRouterBackend(ChatAPIBackend):
 
 # -- AMD Token Factory (AMD Radeon Cloud, OpenAI-compatible, free shared endpoints) ----------
 AMD_ENDPOINT = "https://developer.amd.com.cn/radeon/api/v1/chat/completions"
-# Gemma-4-31B-IT was the first default but left the Token Factory catalog (the gateway answers HTTP 400).
-# MiMo-V2.6-Flash answered the NPC prompts best of the six chat models tried (see docs/amd.md).
-AMD_DEFAULT_MODEL = "MiMo-V2.6-Flash"
+# Gemma-4-31B-IT is the default. It was off the Token Factory catalog on 2026-10-15 (demand after Google's announcement)
+# and back on 2026-10-16, but loaded: some calls take 15-50 s or get HTTP 503 "no available workers". The game server
+# therefore puts MiMo-V2.6-Flash (same service, 3-7 s) behind it (see docs/amd.md).
+AMD_DEFAULT_MODEL = "Gemma-4-31B-IT"
 AMD_KEY_NAME = "AMD_API_KEY"
 
 
 class AMDBackend(ChatAPIBackend):
-    """MiMo-V2.6-Flash (or any catalog model) served on AMD GPUs by Token Factory.
+    """Gemma-4-31B-IT (or any catalog model) served on AMD GPUs by Token Factory.
 
     Same chat-completions protocol as OpenRouter. Differences: the gateway rejects the
-    `reasoning` object with HTTP 400 (the default models do not need it, so nothing is sent), and
+    `reasoning` object with HTTP 400 (Gemma and MiMo do not need it, so nothing is sent), and
     the free tier allows ~20 requests/minute per account, hence the 3.2 s default spacing.
     429s honour Retry-After through the inherited retry loop. The key is shared by the whole team.
     """
     endpoint = AMD_ENDPOINT
     key_name = AMD_KEY_NAME
     title = "Affekt Core"
+    provider = "AMD Token Factory"
 
     def __init__(self, model: str = AMD_DEFAULT_MODEL, min_interval: float = 3.2, **kw):
         super().__init__(model, min_interval=min_interval, **kw)
+
+
+def describe(backend) -> str:
+    """Who answered, for the UI and the logs: 'AMD Token Factory · MiMo-V2.6-Flash'."""
+    name = getattr(backend, "provider", type(backend).__name__)
+    model = getattr(backend, "model", "")
+    return f"{name} · {model}" if model else name
+
+
+class FailoverBackend(LLMBackend):
+    """Asks `backends` in order and returns the first answer: AMD first, another provider as a backup.
+
+    A backend that raised (HTTP 429, timeout, network error) is skipped for `cooldown` seconds, so the
+    next players go straight to the backup instead of each waiting for the failing service. An empty reply
+    only moves on to the next backend for that one call. If every backend is cooling down they are all
+    tried anyway, in order; if all fail, the last error is raised and the engine answers with its
+    deterministic line for the mood. `last_provider()` names who answered the latest call of this thread.
+    """
+
+    def __init__(self, backends: List[LLMBackend], cooldown: float = 45.0,
+                 clock: Callable[[], float] = time.monotonic):
+        if not backends:
+            raise ValueError("FailoverBackend needs at least one backend")
+        self.backends = list(backends)
+        self.cooldown = cooldown
+        self._clock = clock
+        self._down: Dict[int, float] = {}  # id(backend) -> monotonic time until which it is skipped
+        self._lock = threading.Lock()
+        self._local = threading.local()
+        self._shots = getattr(self.backends[0], "shots", 3)
+
+    @property
+    def shots(self) -> int:
+        return self._shots
+
+    @shots.setter
+    def shots(self, value: int) -> None:  # the engine sets this once; every backend must use the same prompt
+        self._shots = value
+        for b in self.backends:
+            b.shots = value
+
+    def clear_last(self) -> None:
+        self._local.provider = None
+
+    def last_provider(self) -> Optional[str]:
+        return getattr(self._local, "provider", None)
+
+    def generate(self, payload: List[str], action: str) -> str:
+        now = self._clock()
+        with self._lock:
+            ready = [b for b in self.backends if self._down.get(id(b), 0.0) <= now]
+        order = ready + [b for b in self.backends if b not in ready]  # cooling-down ones go last, never dropped
+        self._local.provider = None
+        last_error: Exception = APIError("empty reply")
+        for b in order:
+            try:
+                text = b.generate(payload, action)
+            except Exception as e:  # noqa: BLE001 - any failure of one provider falls through to the next
+                last_error = e
+                with self._lock:
+                    self._down[id(b)] = self._clock() + self.cooldown
+                continue
+            if text and text.strip():
+                with self._lock:
+                    self._down.pop(id(b), None)
+                self._local.provider = describe(b)
+                return text
+            last_error = APIError("empty reply")
+        raise last_error

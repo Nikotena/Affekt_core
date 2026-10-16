@@ -58,6 +58,8 @@ third person or mentioning the system); content outside the game fiction.
 
 ## Data
 
+> Note (2026-10-15): the world is now "Affekt Town" (prompts start with `World: Affekt Town` and each NPC has its own place). Rows in `data/` generated earlier use `World: Tavern`; regenerate them before training so the training prompt matches the engine's.
+
 - **Input:** the exact payload produced by `AffektEngine.build_payload`, the same structure used in
   the game.
 - **Output:** the NPC line written by the teacher and filtered.

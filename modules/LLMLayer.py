@@ -207,6 +207,14 @@ def narrate_action(action: str) -> str:
     return _INTENT_NARRATION.get(parsed.intent) or f"The player does this: {action}."
 
 
+# What an NPC says when greeting at each part of the day (the player's local clock, see engine.set_time_of_day).
+GREETINGS = {
+    "morning": 'Greet the player with "Good morning".',
+    "afternoon": 'Greet the player with "Good afternoon".',
+    "evening": 'Greet the player with "Good evening".',
+    "night": "Greet the player and mention that it is late at night.",  # "Good evening" sounds wrong at 2 a.m.
+}
+
 _HIDDEN_PREFIXES = ("NPC: ", "Scene: ", "Player earlier: ", "Last reply: ")  # engine bookkeeping, noise for the model
 
 
@@ -220,6 +228,10 @@ def _user_turn(facts: List[str], situation: str, no_think: bool = True) -> str:
         price = next((m.group(1) for f in shown if (m := re.search(r"for (\d+) coins\.", f))), None)
         if price:  # the engine knows the price: do not leave it to the model to remember to say it
             ask = f"\nSay the price: {price} coins."
+    if situation.startswith("The player greets you"):
+        part = next((m.group(1) for f in shown if (m := re.match(r"Time: (\w+)\.$", f))), None)
+        if part in GREETINGS:  # the engine knows the time of day: the greeting must fit it
+            ask += "\n" + GREETINGS[part]
     last = next((f[len("Last reply: "):] for f in facts if f.startswith("Last reply: ")), "")
     if last:  # models fall into a habit ("Watch your tone..." six times in a row); name it and forbid it
         opening = " ".join(last.split()[:3])
