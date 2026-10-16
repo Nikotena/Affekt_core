@@ -19,7 +19,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from modules.LLMLayer import LLMBackend, build_messages, clean_output
 
@@ -224,16 +224,23 @@ class FailoverBackend(LLMBackend):
     """
 
     def __init__(self, backends: List[LLMBackend], cooldown: float = 45.0,
-                 clock: Callable[[], float] = time.monotonic):
+                 clock: Callable[[], float] = time.monotonic, state: Optional[Dict] = None):
         if not backends:
             raise ValueError("FailoverBackend needs at least one backend")
         self.backends = list(backends)
         self.cooldown = cooldown
         self._clock = clock
-        self._down: Dict[int, float] = {}  # id(backend) -> monotonic time until which it is skipped
+        # model name -> monotonic time until which it is skipped. Pass the same `state` dict to every new
+        # FailoverBackend of one player (the game builds one per request with that player's key) so a model that
+        # just failed is remembered between requests. It never holds a key.
+        self._down: Dict[Any, float] = state if state is not None else {}
         self._lock = threading.Lock()
         self._local = threading.local()
         self._shots = getattr(self.backends[0], "shots", 3)
+
+    @staticmethod
+    def _key(b) -> Any:
+        return getattr(b, "model", None) or id(b)
 
     @property
     def shots(self) -> int:
@@ -254,7 +261,7 @@ class FailoverBackend(LLMBackend):
     def generate(self, payload: List[str], action: str) -> str:
         now = self._clock()
         with self._lock:
-            ready = [b for b in self.backends if self._down.get(id(b), 0.0) <= now]
+            ready = [b for b in self.backends if self._down.get(self._key(b), 0.0) <= now]
         order = ready + [b for b in self.backends if b not in ready]  # cooling-down ones go last, never dropped
         self._local.provider = None
         last_error: Exception = APIError("empty reply")
@@ -264,11 +271,11 @@ class FailoverBackend(LLMBackend):
             except Exception as e:  # noqa: BLE001 - any failure of one provider falls through to the next
                 last_error = e
                 with self._lock:
-                    self._down[id(b)] = self._clock() + self.cooldown
+                    self._down[self._key(b)] = self._clock() + self.cooldown
                 continue
             if text and text.strip():
                 with self._lock:
-                    self._down.pop(id(b), None)
+                    self._down.pop(self._key(b), None)
                 self._local.provider = describe(b)
                 return text
             last_error = APIError("empty reply")

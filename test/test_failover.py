@@ -107,6 +107,20 @@ class FailoverTests(unittest.TestCase):
         self.assertEqual(describe(orb.OpenRouterBackend(model="google/gemma-4-31b-it", api_key="k")),
                          "OpenRouter · google/gemma-4-31b-it")
 
+    def test_shared_state_remembers_a_failure_between_instances(self):
+        # the game builds one FailoverBackend per request; a shared dict keeps the cooldown across them
+        state, clock = {}, Clock()
+        a1, b1 = Fake("amd", [APIError("HTTP 503")]), Fake("or", ["Backup."])
+        FailoverBackend([a1, b1], cooldown=45.0, clock=clock, state=state).generate(PAYLOAD, "hi")
+        a2, b2 = Fake("amd", ["Hello."]), Fake("or", ["Backup 2."])
+        out = FailoverBackend([a2, b2], cooldown=45.0, clock=clock, state=state).generate(PAYLOAD, "hi")
+        self.assertEqual((a2.calls, out), (0, "Backup 2."))
+        clock.t += 46
+        a3, b3 = Fake("amd", ["Back."]), Fake("or", ["x"])
+        self.assertEqual(FailoverBackend([a3, b3], cooldown=45.0, clock=clock, state=state).generate(PAYLOAD, "hi"), "Back.")
+        self.assertNotIn("amd", state)
+        self.assertTrue(all(isinstance(k, str) for k in state))  # keyed by model name, never by an API key
+
 
 if __name__ == "__main__":
     unittest.main()
