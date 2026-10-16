@@ -104,8 +104,8 @@ class FailoverTests(unittest.TestCase):
     def test_describe_names_provider_and_model(self):
         b = orb.AMDBackend(api_key="k")
         self.assertEqual(describe(b), f"AMD Token Factory · {orb.AMD_DEFAULT_MODEL}")
-        self.assertEqual(describe(orb.OpenRouterBackend(model="google/gemma-4-31b-it", api_key="k")),
-                         "OpenRouter · google/gemma-4-31b-it")
+        self.assertEqual(describe(orb.AMDBackend(model="MiMo-V2.6-Flash", api_key="k")),
+                         "AMD Token Factory · MiMo-V2.6-Flash")
 
     def test_shared_state_remembers_a_failure_between_instances(self):
         # the game builds one FailoverBackend per request; a shared dict keeps the cooldown across them

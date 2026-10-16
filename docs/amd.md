@@ -39,7 +39,6 @@ Every NPC line of the public demo is written by a model on **AMD Token Factory**
 
 1. **Gemma-4-31B-IT on AMD Token Factory** (`AFFEKT_AMD_MODEL`).
 2. **MiMo-V2.6-Flash on AMD Token Factory** (`AFFEKT_AMD_BACKUP_MODEL`): also AMD, and not as saturated.
-3. **Gemma 4 on OpenRouter**, only if an `OPENROUTER_API_KEY` exists: last resort, outside AMD.
 
 The deterministic part (emotion, memory, graph, intent, price guard) runs on the web server itself. The panel next to
 the game shows which provider wrote each line, e.g. `LLM: AMD Token Factory · Gemma-4-31B-IT`.

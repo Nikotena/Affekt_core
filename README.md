@@ -8,7 +8,7 @@ decides what the NPC feels, remembers and knows; the model only phrases the fina
 never changes game state, so NPCs can't invent prices, items or relationships.
 
 Built for the **AMD Developer Hackathon: ACT III**. The language model is swappable: the default is
-Gemma-4-31B-IT on AMD GPUs through AMD Token Factory, with MiMo-V2.6-Flash (also on AMD) and OpenRouter as backups
+Gemma-4-31B-IT on AMD GPUs through AMD Token Factory, with MiMo-V2.6-Flash (also on AMD) as the backup
 (see [docs/amd.md](docs/amd.md)); the measurements in `docs/` were taken with Gemma-4-31B-IT.
 
 ## Features
@@ -19,7 +19,7 @@ Gemma-4-31B-IT on AMD GPUs through AMD Token Factory, with MiMo-V2.6-Flash (also
 - **Free-text understanding**: a rule-based parser reads the player's intent, tone, offered price and item;
   an optional model resolves ambiguous lines.
 - **Time of day**: the host passes the player's local hour (`engine.set_time_of_day(hour)`), the payload gets a `Time: morning.` line, and NPCs greet with "Good morning", "Good afternoon" or "Good evening" (late at night they mention it is late). Only greetings are constrained; the rest of the line is still the model's.
-- **Provider failover**: `FailoverBackend` asks Gemma 4 on AMD Token Factory first, then MiMo on AMD, then OpenRouter, when the one before fails or is slow; a failing step is skipped for 45 s. If every provider fails the NPC answers with its canned line.
+- **Provider failover**: `FailoverBackend` asks Gemma 4 on AMD Token Factory first, then MiMo on AMD, when the one before fails or is slow; a failing step is skipped for 45 s. If every provider fails the NPC answers with its canned line.
 - **Graceful fallback**: if the model is unreachable, NPCs answer with deterministic lines for their mood.
 - **Fact guard**: a price in the model's reply that differs from the engine's is replaced before the player sees it.
 - **Standard library only** for the engine, the tests and the AMD API client.
@@ -127,8 +127,8 @@ llama.cpp, GGUF) but **no fine-tuned model has been trained yet** and local spee
 
 Estimate, not a measurement. A typical NPC prompt is 170-255 input tokens (708-1023 characters from the demo
 conversations, at about 4 characters per token); the reply is capped at 160 tokens and is usually 1-2 sentences.
-At OpenRouter's list price for `google/gemma-4-31b-it` ($0.20 per million input tokens, $0.40 per million
-output tokens, checked 2026-10-15):
+At an assumed reference price for a hosted Gemma 4 31B ($0.20 per million input tokens, $0.40 per million
+output tokens, a public list price checked 2026-10-15; AMD Token Factory's free tier does not bill per token):
 
 | | Calculation | Cost |
 |---|---|---|
@@ -184,7 +184,7 @@ modules/
   IntentParser.py           rule-based reading of player text
   IntentLLM.py              optional model fallback for ambiguous lines
   LLMLayer.py               prompts and model backends
-  ApiBackend.py             hosted-model clients: AMD Token Factory (AMDBackend), OpenRouter
+  ApiBackend.py             hosted-model clients: AMD Token Factory (AMDBackend)
 test/                  unit tests, benchmarks and labelled data
 training/              dataset tools for a future fine-tune of a small local model
 ```

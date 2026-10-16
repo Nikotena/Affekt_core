@@ -65,8 +65,8 @@ third person or mentioning the system); content outside the game fiction.
 - **Output:** the NPC line written by the teacher and filtered.
 - **Teacher:** Gemma-4-31B-IT through AMD Token Factory (`--teacher amd`). Weights are served
   unmodified and the license is Apache-2.0, recorded per row with `--teacher-license`. Earlier
-  small trials used other teachers (a free Nemotron model on OpenRouter, a local TBrilliance 2.6B
-  at about 14 s per reply on CPU); the pipeline supports all of them (`--teacher amd|openrouter|local`).
+  small trials used other teachers (a free hosted Nemotron model, a local TBrilliance 2.6B
+  at about 14 s per reply on CPU); the pipeline supports all of them (`--teacher amd|local`).
 - **Scenarios:** a grid of NPC (role and name) x mood x action x item and price. Items and prices
   vary widely; game items are included too.
 - **Filter** (`training/filters.py`): reuses the benchmark checks and rejects stage directions,

@@ -1,12 +1,9 @@
 """
 Hosted-model backends over an OpenAI-compatible chat-completions API.
 
-ChatAPIBackend holds the shared code (HTTP, retries, rate limiting, key loading). Two concrete
-backends configure it:
+ChatAPIBackend holds the shared code (HTTP, retries, rate limiting, key loading). AMDBackend configures it:
 
     AMDBackend         Gemma-4-31B-IT (default, any catalog model) on AMD GPUs through AMD Token Factory (key AMD_API_KEY)
-    OpenRouterBackend  models on OpenRouter, used as a teacher for dataset generation
-                       (key OPENROUTER_API_KEY)
 
 Same interface as LlamaCppBackend, so engine and dataset generator can swap models. Uses only the
 standard library. Keys are read from the environment or the project's .env file and are never
@@ -23,20 +20,18 @@ from typing import Any, Callable, Dict, List, Optional
 
 from modules.LLMLayer import LLMBackend, build_messages, clean_output
 
-OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 RETRY_STATUS = {408, 429, 500, 502, 503, 504}
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OPENROUTER_KEY_NAME = "OPENROUTER_API_KEY"
+AMD_KEY_NAME = "AMD_API_KEY"
 
 
 class APIError(RuntimeError):
     pass
 
 
-def load_key(env_file: Optional[str] = None, key_name: str = OPENROUTER_KEY_NAME) -> str:
+def load_key(env_file: Optional[str] = None, key_name: str = AMD_KEY_NAME) -> str:
     """API key from the environment, else from the project's .env file ('' if neither).
 
     Only `key_name` is read from .env; nothing else is exported and the value is never logged.
@@ -67,7 +62,7 @@ class ChatAPIBackend(LLMBackend):
 
     def __init__(self, model: str, api_key: Optional[str] = None,
                  temperature: float = 0.7, max_tokens: int = 160, min_interval: float = 3.0,
-                 retries: int = 6, disable_reasoning: bool = False, timeout: float = 120.0,
+                 retries: int = 6, timeout: float = 120.0,
                  opener: Optional[Callable] = None, sleep: Callable[[float], None] = time.sleep):
         self._key = api_key or load_key(key_name=self.key_name)
         if not self._key:
@@ -78,7 +73,6 @@ class ChatAPIBackend(LLMBackend):
         self.max_tokens = max_tokens
         self.min_interval = min_interval
         self.retries = retries
-        self.disable_reasoning = disable_reasoning
         self.shots = 3
         self._open = opener or urllib.request.urlopen
         self._sleep = sleep
@@ -151,33 +145,12 @@ class ChatAPIBackend(LLMBackend):
             "temperature": self.temperature if temperature is None else temperature,
             "max_tokens": max_tokens or self.max_tokens,
         }
-        if self.disable_reasoning:
-            body["reasoning"] = {"enabled": False}
-        try:
-            data = self._post(body)
-        except APIError as e:
-            # Some models reject the reasoning field; retry once without it.
-            if self.disable_reasoning and str(e).startswith("HTTP 400"):
-                body.pop("reasoning")
-                data = self._post(body)
-            else:
-                raise
+        data = self._post(body)
         try:
             text = data["choices"][0]["message"].get("content") or ""
         except (KeyError, IndexError, TypeError):
             raise APIError(f"unexpected response: {str(data)[:200]}") from None
         return text
-
-
-class OpenRouterBackend(ChatAPIBackend):
-    """OpenRouter models. Used as a dataset teacher; asks the model not to spend tokens on reasoning."""
-    endpoint = OPENROUTER_ENDPOINT
-    key_name = OPENROUTER_KEY_NAME
-    title = "Affekt Core dataset generation"
-    provider = "OpenRouter"
-
-    def __init__(self, model: str = OPENROUTER_DEFAULT_MODEL, disable_reasoning: bool = True, **kw):
-        super().__init__(model, disable_reasoning=disable_reasoning, **kw)
 
 
 # -- AMD Token Factory (AMD Radeon Cloud, OpenAI-compatible, free shared endpoints) ----------
@@ -186,15 +159,13 @@ AMD_ENDPOINT = "https://developer.amd.com.cn/radeon/api/v1/chat/completions"
 # and back on 2026-10-16, but loaded: some calls take 15-50 s or get HTTP 503 "no available workers". The game server
 # therefore puts MiMo-V2.6-Flash (same service, 3-7 s) behind it (see docs/amd.md).
 AMD_DEFAULT_MODEL = "Gemma-4-31B-IT"
-AMD_KEY_NAME = "AMD_API_KEY"
 
 
 class AMDBackend(ChatAPIBackend):
     """Gemma-4-31B-IT (or any catalog model) served on AMD GPUs by Token Factory.
 
-    Same chat-completions protocol as OpenRouter. Differences: the gateway rejects the
-    `reasoning` object with HTTP 400 (Gemma and MiMo do not need it, so nothing is sent), and
-    the free tier allows ~20 requests/minute per account, hence the 3.2 s default spacing.
+    OpenAI-compatible chat-completions protocol. The free tier allows ~20 requests/minute per
+    account, hence the 3.2 s default spacing.
     429s honour Retry-After through the inherited retry loop. The key is shared by the whole team.
     """
     endpoint = AMD_ENDPOINT

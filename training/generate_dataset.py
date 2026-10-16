@@ -83,16 +83,15 @@ def append_jsonl(path, row, retries=5):
 
 def make_teacher(args):
     """Build the teacher backend. Returns (backend, label recorded in every row)."""
-    if args.teacher in ("openrouter", "amd"):
-        from modules.ApiBackend import AMD_DEFAULT_MODEL, AMDBackend, OPENROUTER_DEFAULT_MODEL, OpenRouterBackend
+    if args.teacher == "amd":
+        from modules.ApiBackend import AMD_DEFAULT_MODEL, AMDBackend
         if not args.teacher_license:
             sys.exit(f"--teacher-license is required with --teacher {args.teacher}: write down the "
                      "license/terms that allow training on this model's outputs (check its model card).")
-        cls, default = (AMDBackend, AMD_DEFAULT_MODEL) if args.teacher == "amd" else (OpenRouterBackend, OPENROUTER_DEFAULT_MODEL)
-        model = args.model or default
+        model = args.model or AMD_DEFAULT_MODEL
         kw = {k: v for k, v in (("min_interval", args.min_interval), ("timeout", getattr(args, "timeout", None)))
               if v is not None}
-        return cls(model, temperature=args.temperature, **kw), model
+        return AMDBackend(model, temperature=args.temperature, **kw), model
     from modules.LLMLayer import LlamaCppBackend
     model = args.model or DEFAULT_TEACHER
     return LlamaCppBackend(model, temperature=args.temperature, n_ctx=1024), os.path.basename(model)
@@ -134,7 +133,7 @@ def cmd_generate(args):
                     sys.exit(f"stopping after {failed} failures")
                 continue
             row = {**sc.to_dict(), "payload": payload, "reply": reply, "teacher": label}
-            if args.teacher in ("openrouter", "amd"):
+            if args.teacher == "amd":
                 row["teacher_license"] = args.teacher_license
             append_jsonl(args.out, row)
             if done_n % 10 == 0 or done_n == len(todo):
@@ -214,10 +213,10 @@ def main():
     g.add_argument("--n", type=int, default=200)
     g.add_argument("--seed", type=int, default=0)
     g.add_argument("--out", default="data/raw.jsonl")
-    g.add_argument("--teacher", choices=["local", "openrouter", "amd"], default="local")
-    g.add_argument("--model", default=None, help="GGUF path (local) or API model id (openrouter / amd)")
-    g.add_argument("--teacher-license", default="", help="license/terms allowing training on the outputs (required for openrouter / amd)")
-    g.add_argument("--min-interval", type=float, default=None, help="seconds between API calls (default: 3.0 openrouter, 3.2 amd)")
+    g.add_argument("--teacher", choices=["local", "amd"], default="local")
+    g.add_argument("--model", default=None, help="GGUF path (local) or API model id (amd)")
+    g.add_argument("--teacher-license", default="", help="license/terms allowing training on the outputs (required for amd)")
+    g.add_argument("--min-interval", type=float, default=None, help="seconds between API calls (default: 3.2 amd)")
     g.add_argument("--workers", type=int, default=1,
                    help="parallel API calls (amd: 4 keeps under ~20 requests/min with ~40 s replies)")
     g.add_argument("--timeout", type=float, default=None, help="seconds to wait for one API reply (default 120)")

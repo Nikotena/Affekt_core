@@ -1,4 +1,4 @@
-"""API backend tests (AMD Token Factory and OpenRouter) with a fake HTTP layer: no network, no real key."""
+"""API backend tests (AMD Token Factory) with a fake HTTP layer: no network, no real key."""
 import argparse
 import io
 import json
@@ -13,7 +13,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "test"))
 
 import modules.ApiBackend as orb
-from modules.ApiBackend import OPENROUTER_DEFAULT_MODEL, OpenRouterBackend, APIError, load_key
+from modules.ApiBackend import AMD_DEFAULT_MODEL, AMDBackend, APIError, load_key
 from training.generate_dataset import make_teacher
 
 PAYLOAD = ["World: Tavern", "NPC: Oswin", "You are Oswin, the Blacksmith.",
@@ -54,20 +54,20 @@ class FakeNet:
 
 def backend(net, sleeps=None, **kw):
     sleeps = sleeps if sleeps is not None else []
-    return OpenRouterBackend(api_key=KEY, opener=net, sleep=sleeps.append, min_interval=0, **kw), sleeps
+    return AMDBackend(api_key=KEY, opener=net, sleep=sleeps.append, min_interval=0, **kw), sleeps
 
 
-class OpenRouterTests(unittest.TestCase):
+class ChatClientTests(unittest.TestCase):
     def test_request_shape(self):
         net = FakeNet("Hmm. What do you need?")
         b, _ = backend(net)
         self.assertEqual(b.generate(PAYLOAD, "greet the NPC"), "Hmm. What do you need?")
         req = net.requests[0]
-        self.assertEqual(req.full_url, "https://openrouter.ai/api/v1/chat/completions")
+        self.assertEqual(req.full_url, "https://developer.amd.com.cn/radeon/api/v1/chat/completions")
         self.assertEqual(req.get_header("Authorization"), f"Bearer {KEY}")
         body = json.loads(req.data)
-        self.assertEqual(body["model"], OPENROUTER_DEFAULT_MODEL)
-        self.assertEqual(body["reasoning"], {"enabled": False})
+        self.assertEqual(body["model"], AMD_DEFAULT_MODEL)
+        self.assertNotIn("reasoning", body)
         roles = [m["role"] for m in body["messages"]]
         self.assertEqual(roles[0], "system")
         self.assertEqual(roles[-1], "user")
@@ -75,16 +75,16 @@ class OpenRouterTests(unittest.TestCase):
         self.assertNotIn("/no_think", body["messages"][-1]["content"])  # Qwen-only trick
 
     def test_missing_key_and_key_never_exposed(self):
-        old, old_root = os.environ.pop("OPENROUTER_API_KEY", None), orb.ROOT
+        old, old_root = os.environ.pop("AMD_API_KEY", None), orb.ROOT
         try:
             with tempfile.TemporaryDirectory() as empty:
                 orb.ROOT = empty  # no .env here, whatever the real project has
                 with self.assertRaises(APIError):
-                    OpenRouterBackend()
+                    AMDBackend()
         finally:
             orb.ROOT = old_root
             if old is not None:
-                os.environ["OPENROUTER_API_KEY"] = old
+                os.environ["AMD_API_KEY"] = old
         b, _ = backend(FakeNet())
         self.assertNotIn(KEY, repr(b))
 
@@ -113,20 +113,13 @@ class OpenRouterTests(unittest.TestCase):
             b.generate(PAYLOAD, "greet the NPC")
         self.assertEqual((len(net.requests), sleeps), (1, []))
 
-    def test_retries_without_reasoning_field_on_400(self):
-        net = FakeNet(http_error(400), "Move along.")
-        b, _ = backend(net)
-        self.assertEqual(b.generate(PAYLOAD, "greet the NPC"), "Move along.")
-        self.assertIn("reasoning", json.loads(net.requests[0].data))
-        self.assertNotIn("reasoning", json.loads(net.requests[1].data))
-
     def test_empty_content_returns_empty_string(self):
         b, _ = backend(FakeNet(None))
         self.assertEqual(b.generate(PAYLOAD, "greet the NPC"), "")
 
     def test_spacing_between_calls(self):
         sleeps = []
-        b = OpenRouterBackend(api_key=KEY, opener=FakeNet("a b c", "d e f"), sleep=sleeps.append, min_interval=5)
+        b = AMDBackend(api_key=KEY, opener=FakeNet("a b c", "d e f"), sleep=sleeps.append, min_interval=5)
         b.generate(PAYLOAD, "greet the NPC")
         b.generate(PAYLOAD, "greet the NPC")
         self.assertTrue(sleeps and 0 < sleeps[-1] <= 5)
@@ -134,13 +127,13 @@ class OpenRouterTests(unittest.TestCase):
 
 class DotEnvTests(unittest.TestCase):
     def setUp(self):
-        self._old = os.environ.pop("OPENROUTER_API_KEY", None)
+        self._old = os.environ.pop("AMD_API_KEY", None)
 
     def tearDown(self):
         if self._old is not None:
-            os.environ["OPENROUTER_API_KEY"] = self._old
+            os.environ["AMD_API_KEY"] = self._old
         else:
-            os.environ.pop("OPENROUTER_API_KEY", None)
+            os.environ.pop("AMD_API_KEY", None)
 
     def write_env(self, text):
         f = tempfile.NamedTemporaryFile("w", suffix=".env", delete=False, encoding="utf-8")
@@ -150,17 +143,17 @@ class DotEnvTests(unittest.TestCase):
         return f.name
 
     def test_reads_only_the_key_from_dotenv(self):
-        path = self.write_env("# comment\nOTHER=1\nOPENROUTER_API_KEY=sk-or-abc123\n")
-        self.assertEqual(load_key(path), "sk-or-abc123")
+        path = self.write_env("# comment\nOTHER=1\nAMD_API_KEY=tk-abc123\n")
+        self.assertEqual(load_key(path), "tk-abc123")
         self.assertNotIn("OTHER", os.environ)
 
     def test_quotes_export_and_bom(self):
-        self.assertEqual(load_key(self.write_env('export OPENROUTER_API_KEY="sk-or-q"\n')), "sk-or-q")
-        self.assertEqual(load_key(self.write_env("\ufeffOPENROUTER_API_KEY='sk-or-b'\r\n")), "sk-or-b")
+        self.assertEqual(load_key(self.write_env('export AMD_API_KEY="sk-or-q"\n')), "sk-or-q")
+        self.assertEqual(load_key(self.write_env("\ufeffAMD_API_KEY='sk-or-b'\r\n")), "sk-or-b")
 
     def test_environment_wins_over_dotenv(self):
-        os.environ["OPENROUTER_API_KEY"] = "from-env"
-        self.assertEqual(load_key(self.write_env("OPENROUTER_API_KEY=from-file\n")), "from-env")
+        os.environ["AMD_API_KEY"] = "from-env"
+        self.assertEqual(load_key(self.write_env("AMD_API_KEY=from-file\n")), "from-env")
 
     def test_missing_file_or_key(self):
         self.assertEqual(load_key("does-not-exist.env"), "")
@@ -169,19 +162,19 @@ class DotEnvTests(unittest.TestCase):
 
 class TeacherSelectionTests(unittest.TestCase):
     def args(self, **kw):
-        base = dict(teacher="openrouter", model=None, teacher_license="", temperature=0.7, min_interval=3.0)
+        base = dict(teacher="amd", model=None, teacher_license="", temperature=0.7, min_interval=3.0)
         base.update(kw)
         return argparse.Namespace(**base)
 
-    def test_license_is_required_for_openrouter(self):
-        os.environ["OPENROUTER_API_KEY"] = KEY
+    def test_license_is_required_for_amd(self):
+        os.environ["AMD_API_KEY"] = KEY
         with self.assertRaises(SystemExit):
             make_teacher(self.args())
 
     def test_default_model_and_label(self):
-        os.environ["OPENROUTER_API_KEY"] = KEY
+        os.environ["AMD_API_KEY"] = KEY
         teacher, label = make_teacher(self.args(teacher_license="see model card"))
-        self.assertEqual(label, OPENROUTER_DEFAULT_MODEL)
+        self.assertEqual(label, AMD_DEFAULT_MODEL)
         self.assertNotIn(KEY, repr(teacher))
 
 
@@ -205,7 +198,7 @@ class AMDBackendTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, ".env")
             with open(path, "w") as f:
-                f.writelines(["OPENROUTER_API_KEY =other", chr(10), "AMD_API_KEY = rc-abc123", chr(10)])
+                f.writelines(["OTHER_API_KEY =other", chr(10), "AMD_API_KEY = rc-abc123", chr(10)])
             old = os.environ.pop("AMD_API_KEY", None)
             try:
                 self.assertEqual(load_key(path, key_name="AMD_API_KEY"), "rc-abc123")
