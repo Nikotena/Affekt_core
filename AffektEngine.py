@@ -75,7 +75,7 @@ class AffektEngine:
         """Register initial context definitions"""
         # Chapter-based contexts
         self.context.contexts["chapter_start"] = {
-            "description": "A quiet evening in the town of Affekt",
+            "description": "Everyday life in the town of Affekt",  # sin hora: la hora real la pone `Time:` desde el reloj del jugador
             "variables": ["chapter", "location", "goal"]
         }
         
