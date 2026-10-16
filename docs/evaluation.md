@@ -8,7 +8,7 @@ the load at that moment. Raw results are in [`docs/benchmarks/`](benchmarks/).
 
 | Area | Implemented | Measured | Planned |
 |---|---|---|---|
-| Deterministic core (emotion, memory, graph, triggers) | Yes | 181 unit tests pass | |
+| Deterministic core (emotion, memory, graph, triggers) | Yes | 194 unit tests pass | |
 | Per-NPC temperament | Yes | Behaviour tests (`test_temperament.py`) | Tuning with player feedback |
 | Intent parser (rules) | Yes | 95% on a 179-line bank; 71% / 54% on own 150 / 50 labelled lines | More rules or a trained classifier |
 | LLM intent fallback | Yes, off by default | 54% to 64% on 50 held-out lines (not statistically conclusive, see below) | A larger held-out set |
@@ -20,13 +20,39 @@ the load at that moment. Raw results are in [`docs/benchmarks/`](benchmarks/).
 ## 1. Test suite
 
 ```powershell
-python -m unittest discover -s test        # 181 tests, about half a second, no network, no model
+python -m unittest discover -s test        # 194 tests, about half a second, no network, no model
 ```
 
 They cover the engine wiring, personality maths, memory, graph, intent parser, name handling,
 prompt rules (for example that a price question makes the reply state the price), temperaments,
 API client behaviour with a simulated HTTP layer (retries, 429 handling, key never printed),
 fallback when the API fails, the runtime price guard, and the benchmark statistics helpers.
+
+### Core module audit
+
+The core modules were also audited with an adversarial script (64 checks: boundaries, invalid
+input, fuzzing, determinism across processes, a simulated Neo4j driver) in addition to the unit
+tests. It found 8 real problems, all fixed and now covered by `test/test_core_modules.py`:
+
+| Module | Problem found | Fix |
+|---|---|---|
+| MemorySet | One 20-entry buffer shared by all NPCs: 30 lines to Marta erased all 5 of Kael's | One buffer per NPC |
+| MemorySet | `importance_of([])` raised an error | Returns 0.0 |
+| ContextFunction | Triggers matched substrings: "I forgive you" fired `give`, "a counsellor" fired `sell`, "buyer" fired `buy` | Whole words only (with forms like selling, gave, bought) |
+| GraphDatabase | Forgotten memories were removed in memory but stayed in Neo4j and came back on load | Removed nodes are deleted on the next sync |
+| GraphDatabase | NaN or infinity in a property produced invalid Cypher | Written as `null` |
+| GraphDatabase | One node with an unknown label, or an edge to a skipped node, aborted `load_from_neo4j` | Skipped with a message |
+
+Checked and fine: the 4D vector stays in range over 15,000 random actions for every temperament,
+the input delta is never modified, NPCs do not share state, emotions fade or persist according to
+inertia, the payload is identical across processes (6 different hash seeds), and `remove_node`
+leaves no dangling edge. The engine handles empty, very long and unicode input and an NPC that is
+not in the graph.
+
+**Known limits, not fixed.**
+- Long-term memory has no size cap or forgetting: 2,000 consolidated events keep 2,000 concepts.
+  Fine for a session of hours, not for a persistent world.
+- Neo4j was only tested against a simulated driver, not a real server.
 
 ## 2. Intent parser evaluation
 

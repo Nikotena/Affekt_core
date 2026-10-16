@@ -10,7 +10,8 @@ Architecture:
 """
 
 import json
-from typing import Dict, List, Optional, Any
+import math
+from typing import Dict, List, Optional, Any, Set
 from collections import defaultdict
 
 try:
@@ -80,6 +81,8 @@ class GraphDatabase:
         self.edges: Dict[str, List[tuple]] = defaultdict(list)
         # reverse adjacency: node_id -> list of (rel_type, source_id), for undirected traversal
         self._incoming: Dict[str, List[tuple]] = defaultdict(list)
+        # nodes removed since the last sync, so Neo4j forgets them too
+        self._removed: Set[str] = set()
 
         # Optional Neo4j connection
         self._driver = None
@@ -124,6 +127,7 @@ class GraphDatabase:
             raise ValueError(f"Unknown node label: {label}")
         node = _GraphNode(node_id, label, dict(properties))
         self.nodes[node_id] = node
+        self._removed.discard(node_id)
         return node
 
     def get_node(self, node_id: str) -> Optional[_GraphNode]:
@@ -147,7 +151,8 @@ class GraphDatabase:
 
     def remove_node(self, node_id: str) -> None:
         """Delete a node and every edge touching it (used when memories are forgotten)."""
-        self.nodes.pop(node_id, None)
+        if self.nodes.pop(node_id, None) is not None:
+            self._removed.add(node_id)
         self.edges.pop(node_id, None)
         self._incoming.pop(node_id, None)
         for src in list(self.edges):
@@ -204,6 +209,9 @@ class GraphDatabase:
             return False
 
         with self._driver.session() as session:
+            for node_id in sorted(self._removed):  # forgotten memories must not come back on load
+                session.run("MATCH (n {id: $id}) DETACH DELETE n", id=node_id)
+            self._removed.clear()
             for node in self.nodes.values():
                 session.run(
                     f"MERGE (n:`{node.label}` {{id: $id}}) SET n += $props",
@@ -229,12 +237,18 @@ class GraphDatabase:
             ):
                 label = row["labels"][0] if row["labels"] else "Concept"
                 props = {k: v for k, v in row["props"].items() if k != "id"}
+                if label not in NODE_LABELS:  # not one of ours: skip it rather than abort the whole load
+                    print(f"[GraphDatabase] skipping node {row['id']!r} with unknown label {label!r}")
+                    continue
                 self.add_node(row["id"], label, **props)
             for row in session.run(
                 "MATCH (a)-[r]->(b) RETURN a.id AS src, type(r) AS rel, "
                 "b.id AS dst, properties(r) AS props"
             ):
-                self.add_edge(row["src"], row["rel"], row["dst"], **row["props"])
+                try:
+                    self.add_edge(row["src"], row["rel"], row["dst"], **row["props"])
+                except (ValueError, KeyError):  # unknown relationship, or an endpoint that was skipped
+                    print(f"[GraphDatabase] skipping edge {row['src']!r} -{row['rel']}-> {row['dst']!r}")
         return True
 
     # ------------------------------------------------------------------
@@ -247,6 +261,8 @@ class GraphDatabase:
             return "null"
         if isinstance(value, bool):
             return "true" if value else "false"
+        if isinstance(value, float) and not math.isfinite(value):
+            return "null"  # Cypher has no NaN/Infinity literal
         if isinstance(value, (int, float)):
             return repr(value)
         if isinstance(value, (list, tuple)):

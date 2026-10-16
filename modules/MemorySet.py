@@ -10,7 +10,9 @@ from typing import Dict, List, Optional
 
 class MemorySet:
     def __init__(self, short_term_capacity: int = 20, medium_term_retention: float = 300):
-        self.short_term_buffer: deque = deque(maxlen=short_term_capacity)
+        # one ring buffer per NPC, so a chatty NPC cannot push out another NPC's recent memory
+        self.short_term_capacity = short_term_capacity
+        self.short_term_buffer: Dict[str, deque] = {}
         self.medium_term_memory: List[Dict] = []
         self.long_term_memory: List[Dict] = []
 
@@ -20,15 +22,16 @@ class MemorySet:
 
     @staticmethod
     def importance_of(delta_vector: List[float]) -> float:
-        """Largest absolute change on the X/Y/Z axes."""
-        return max(abs(d) for d in delta_vector[:3])
+        """Largest absolute change on the X/Y/Z axes (0.0 for an empty vector)."""
+        return max((abs(d) for d in delta_vector[:3]), default=0.0)
 
     def add_short_term_entry(self, npc_id: str, phrase: str, metadata: Optional[Dict] = None) -> None:
-        """Add a phrase to the short-term ring buffer"""
+        """Add a phrase to the NPC's short-term ring buffer"""
         entry = {"npc_id": npc_id, "phrase": phrase, "timestamp": time.time(), "type": "short_term"}
         if metadata:
             entry.update(metadata)
-        self.short_term_buffer.append(entry)
+        buffer = self.short_term_buffer.setdefault(npc_id, deque(maxlen=self.short_term_capacity))
+        buffer.append(entry)
 
     def add_importance_entry(self, npc_id: str, delta_vector: List[float],
                              event_data: Dict, force: bool = False) -> Optional[Dict]:
@@ -61,7 +64,7 @@ class MemorySet:
         return entry
 
     def get_short_term_context(self, npc_id: str) -> List[Dict]:
-        return [e for e in self.short_term_buffer if e["npc_id"] == npc_id]
+        return list(self.short_term_buffer.get(npc_id, ()))
 
     def get_medium_term_context(self, npc_id: str) -> List[Dict]:
         return [e for e in self.medium_term_memory if e["npc_id"] == npc_id]

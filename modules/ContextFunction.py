@@ -3,10 +3,22 @@ Context Function Module
 Scene orchestrator that determines triggers and assembles strict payloads for LLM
 """
 
+import re
 from typing import Callable, Dict, List, Optional
 
-TRIGGER_KEYWORDS = ("sell", "give", "unlock", "buy", "trade")
+# trigger name -> the whole words that fire it. Whole words only: "forgive" must not fire "give",
+# nor "counsellor" fire "sell".
+TRIGGER_WORDS = {
+    "sell": ("sell", "sells", "selling", "sold"),
+    "give": ("give", "gives", "giving", "gave"),
+    "unlock": ("unlock", "unlocks", "unlocking", "unlocked"),
+    "buy": ("buy", "buys", "buying", "bought"),
+    "trade": ("trade", "trades", "trading", "traded"),
+}
+TRIGGER_KEYWORDS = tuple(TRIGGER_WORDS)
 TRIGGER_NPC_IDS = ("bartender_01", "merchant_01")
+_TRIGGER_RES = [(name, re.compile(r"\b(?:" + "|".join(words) + r")\b")) for name, words in TRIGGER_WORDS.items()]
+_TRIGGER_RES += [(npc, re.compile(r"\b" + re.escape(npc) + r"\b")) for npc in TRIGGER_NPC_IDS]
 
 MAX_PAYLOAD_LINES = 50
 MAX_CONTEXT_VARIABLES = 10
@@ -45,7 +57,7 @@ class ContextFunction:
     def matched_triggers(self, event_description: str) -> List[str]:
         """Names of all triggers (keywords / NPC ids) present in the event."""
         text = event_description.lower()
-        return [k for k in TRIGGER_KEYWORDS + TRIGGER_NPC_IDS if k in text]
+        return [name for name, pattern in _TRIGGER_RES if pattern.search(text)]
 
     def should_trigger_script(self, event_description: str,
                               context_variables: Optional[List[str]] = None) -> bool:
