@@ -157,7 +157,7 @@ class ChatAPIBackend(LLMBackend):
 AMD_ENDPOINT = "https://developer.amd.com.cn/radeon/api/v1/chat/completions"
 # Gemma-4-31B-IT is the default. It was off the Token Factory catalog on 2026-10-15 (demand after Google's announcement)
 # and back on 2026-10-16, but loaded: some calls take 15-50 s or get HTTP 503 "no available workers". The game server
-# therefore puts MiMo-V2.6-Flash (same service, 3-7 s) behind it (see docs/amd.md).
+# so the game falls back to the engine's canned line when a call fails or takes too long (see docs/amd.md).
 AMD_DEFAULT_MODEL = "Gemma-4-31B-IT"
 
 
@@ -178,7 +178,7 @@ class AMDBackend(ChatAPIBackend):
 
 
 def describe(backend) -> str:
-    """Who answered, for the UI and the logs: 'AMD Token Factory · MiMo-V2.6-Flash'."""
+    """Who answered, for the UI and the logs: 'AMD Token Factory · Gemma-4-31B-IT'."""
     name = getattr(backend, "provider", type(backend).__name__)
     model = getattr(backend, "model", "")
     return f"{name} · {model}" if model else name

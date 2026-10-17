@@ -1,8 +1,7 @@
 # Evaluation: what was measured, how, and what is still missing
 
 **Model note.** All model measurements below were taken with Gemma-4-31B-IT on AMD Token Factory, which is
-the default again (it was off the catalog on 2026-10-15 and returned on 2026-10-16, with high load). MiMo-V2.6-Flash,
-the backup, was only spot-checked (see [amd.md](amd.md)); re-run the commands to measure it.
+the default again (it was off the catalog on 2026-10-15 and returned on 2026-10-16, with high load).
 
 Everything here can be re-run with the commands in each section. Numbers were measured on
 2026-10-14 against the shared free tier of AMD Token Factory, so latency in particular depends on

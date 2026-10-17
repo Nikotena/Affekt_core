@@ -8,7 +8,7 @@ decides what the NPC feels, remembers and knows; the model only phrases the fina
 never changes game state: the engine controls prices, items and relationships, and a runtime guard corrects any wrong price in a reply.
 
 Built for the **AMD Developer Hackathon: ACT III**. The language model is swappable: the default is
-Gemma-4-31B-IT on AMD GPUs through AMD Token Factory, with MiMo-V2.6-Flash (also on AMD) as the backup
+Gemma-4-31B-IT on AMD GPUs through AMD Token Factory, as the model
 (see [docs/amd.md](docs/amd.md)); the measurements in `docs/` were taken with Gemma-4-31B-IT.
 
 ## Features
@@ -19,7 +19,7 @@ Gemma-4-31B-IT on AMD GPUs through AMD Token Factory, with MiMo-V2.6-Flash (also
 - **Free-text understanding**: a rule-based parser reads the player's intent, tone, offered price and item;
   an optional model resolves ambiguous lines.
 - **Time of day**: the host passes the player's local hour (`engine.set_time_of_day(hour)`), the payload gets a `Time: morning.` line, and NPCs greet with "Good morning", "Good afternoon" or "Good evening" (late at night they mention it is late). Only greetings are constrained; the rest of the line is still the model's.
-- **Provider failover**: `FailoverBackend` asks Gemma 4 on AMD Token Factory first, then MiMo on AMD, when the one before fails or is slow; a failing step is skipped for 45 s. If every provider fails the NPC answers with its canned line.
+- **Provider failover**: `FailoverBackend` tries the models of a chain in order when the one before fails or is slow (the demo uses just Gemma 4 on AMD Token Factory); a failing step is skipped for 45 s. If every provider fails the NPC answers with its canned line.
 - **Graceful fallback**: if the model is unreachable, NPCs answer with deterministic lines for their mood.
 - **Fact guard**: a price in the model's reply that differs from the engine's is replaced before the player sees it.
 - **Standard library only** for the engine, the tests and the AMD API client.
@@ -112,7 +112,7 @@ raised intent accuracy on 50 held-out lines from 54% to 64%.
 
 ### AMD Token Factory notes
 
-- Endpoint: `https://developer.amd.com.cn/radeon/api/v1` (OpenAI-compatible), default model `Gemma-4-31B-IT` (it was off the catalog on 2026-10-15 and is back, but loaded; `MiMo-V2.6-Flash` is the tested alternative; pick another with `AMDBackend(model=...)`).
+- Endpoint: `https://developer.amd.com.cn/radeon/api/v1` (OpenAI-compatible), default model `Gemma-4-31B-IT` (it was off the catalog on 2026-10-15 and is back, but loaded; pick another with `AMDBackend(model=...)`).
 - A team shares one key and its limits: about 20 requests per minute and 8 concurrent. Replies can
   take from a few seconds to under a minute depending on load.
 - The service is for trial and development, with no SLA. Don't commit the key.
