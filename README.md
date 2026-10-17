@@ -5,7 +5,7 @@ character without losing track of the world.
 
 Affekt follows an **80/20 split**: 80% deterministic logic, 20% language model. Plain code
 decides what the NPC feels, remembers and knows; the model only phrases the final line. The model
-never changes game state, so NPCs can't invent prices, items or relationships.
+never changes game state: the engine controls prices, items and relationships, and a runtime guard corrects any wrong price in a reply.
 
 Built for the **AMD Developer Hackathon: ACT III**. The language model is swappable: the default is
 Gemma-4-31B-IT on AMD GPUs through AMD Token Factory, with MiMo-V2.6-Flash (also on AMD) as the backup
