@@ -11,7 +11,7 @@ the load at that moment. Raw results are in [`docs/benchmarks/`](benchmarks/).
 
 | Area | Implemented | Measured | Planned |
 |---|---|---|---|
-| Deterministic core (emotion, memory, graph, triggers) | Yes | 194 unit tests pass | |
+| Deterministic core (emotion, memory, graph, triggers) | Yes | 226 unit tests pass | |
 | Per-NPC temperament | Yes | Behaviour tests (`test_temperament.py`) | Tuning with player feedback |
 | Intent parser (rules) | Yes | 95% on a 179-line bank; 71% / 54% on own 150 / 50 labelled lines | More rules or a trained classifier |
 | LLM intent fallback | Yes, off by default | 54% to 64% on 50 held-out lines (not statistically conclusive, see below) | A larger held-out set |
@@ -23,7 +23,7 @@ the load at that moment. Raw results are in [`docs/benchmarks/`](benchmarks/).
 ## 1. Test suite
 
 ```powershell
-python -m unittest discover -s test        # 194 tests, about half a second, no network, no model
+python -m unittest discover -s test        # 226 tests, about half a second, no network, no model
 ```
 
 They cover the engine wiring, personality maths, memory, graph, intent parser, name handling,

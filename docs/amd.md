@@ -19,7 +19,7 @@ Because the model only phrases facts that the engine has already selected, promp
 |---|---|---|
 | **NPC dialogue** | `ApiBackend.generate`, used by `create_engine()` | Gemma-4-31B-IT by default; ~10 fact lines per prompt, 2 few-shot examples |
 | **Intent fallback** | `modules/IntentLLM.py`, `create_engine(llm_intents=True)` | Only called for lines labeled as "other" by rules; off by default |
-| **Dataset teacher** | `training/generate_dataset.py --teacher amd` | Resumable, runs parallel requests; 120 sample rows generated so far |
+| **Dataset teacher** | `training/generate_dataset.py --teacher amd` | Resumable, runs parallel requests; 167 sample replies generated so far (4 batches) |
 
 ### Why this design suits a hosted AMD endpoint
 

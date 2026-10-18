@@ -134,7 +134,8 @@ output tokens, a public list price checked 2026-10-15; AMD Token Factory's free 
 |---|---|---|
 | One NPC line (typical, about 40 output tokens) | 210 x $0.2/M + 40 x $0.4/M | about $0.00006 |
 | One NPC line (worst case, 160 output tokens) | 255 x $0.2/M + 160 x $0.4/M | about $0.0001 |
-| One 30-line play session | 30 x the worst case | under $0.003 |
+| One 30-line play session (typical) | 30 x $0.00006 | about $0.002 (under $0.003) |
+| One 30-line play session (worst case) | 30 x $0.000115 | about $0.0035 |
 | 1,000 sessions | | about $2-3 |
 
 The engine also skips the model for short filler lines (it answers with a canned line for the mood), so real
@@ -143,7 +144,7 @@ per-token price but is rate limited (about 20 requests per minute for the whole 
 
 **Who pays.** Independent game studios that want NPCs with memory without writing branching dialogue. With a local
 model the studio's inference bill is zero; revenue is planned from paid tools, support and a marketplace on top
-of the MIT-licensed core (see `Kankei_Engine/hackathon/Business method.md`).
+of the MIT-licensed core.
 
 ## Tests and benchmarks
 
